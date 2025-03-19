@@ -5,6 +5,8 @@ from rich.console import Console
 from .device import ODriveDevice, AxisState, ControlMode, InputMode, OdriveCANCommands
 from .can_interface import CanInterface, Arbitration
 import yaml
+import os
+import rclpy
 
 console = Console()
 
@@ -21,6 +23,7 @@ class ODriveManager:
         """
         self.can_interface = can_interface
         self.devices: Dict[int, ODriveDevice] = {}  # node_id -> device
+        self.running = False
 
     def start(self, config_file_path: str) -> None:
         """
@@ -36,6 +39,7 @@ class ODriveManager:
             #         )
     
 
+    
     def load_configs_from_file(self, config_file_path: str) -> None:
         config = {}
         try:
@@ -59,8 +63,12 @@ class ODriveManager:
                         gear_ratio=gear_ratio,
                     )
 
+            # print all the added devices
+            for node_id, device in self.devices.items():
+                console.print(f"[green]Added device {device.name} with node_id {node_id}[/green]")
         except FileNotFoundError:
-            console.print(f"[red]Failed to load config file: {config_file_path}[/red]")
+            console.print(f"[red]Failed to load config file: {config_file_path}. Current working directory is {os.getcwd()}[/red]")
+            self.stop()
             return
         
     def add_device(
@@ -149,8 +157,10 @@ class ODriveManager:
         """
         Stop the manager and all devices
         """
-        for device in self.devices.values():
-            device.estop()
+        console.print("[blue]Stopping ODrive manager...[/blue]")
+        self.running = False
+        # for device in self.devices.values():
+        #     device.estop()
 
         self.can_interface.stop()
 

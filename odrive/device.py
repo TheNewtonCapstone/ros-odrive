@@ -6,7 +6,7 @@ import time
 from .can_interface import Arbitration
 from rich.console import Console
 import pprint
-from error import ODriveException, ODriveErrorCode, ODriveProcedureResult
+from .error import ODriveErrorCode, ODriveProcedureResult
 
 class AxisState(IntEnum):
     UNDEFINED = 0
