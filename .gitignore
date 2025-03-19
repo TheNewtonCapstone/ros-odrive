@@ -1,0 +1,8 @@
+build/
+install/
+*.pyc
+log/
+__pycache__/
+*.log
+*.swp
+*.swo
