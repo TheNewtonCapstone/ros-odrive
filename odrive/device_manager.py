@@ -219,6 +219,7 @@ class ODriveManager:
         control_mode: ControlMode = ControlMode.POSITION_CONTROL,
         input_mode: InputMode = InputMode.TRAP_TRAJ,
         closed_loop: bool = True,
+        calibrate: bool = True,
         set_zero_pos: bool = True,
     ) -> None:
         """
@@ -236,6 +237,7 @@ class ODriveManager:
                 console.print(
                     f"[yellow]Failed to clear errors for device {node_id}[/yellow]"
                 )
+                time.sleep(0.5)
                 continue
 
         if set_zero_pos:
@@ -245,24 +247,41 @@ class ODriveManager:
                     console.print(
                         f"[yellow]Failed to set zero position for device {node_id}[/yellow]"
                     )
+                    time.sleep(0.5)
                     continue
 
-        # set control mode
-        if closed_loop:
-            for node_id, device in self.devices.items():
-                if not device.set_axis_state(AxisState.CLOSED_LOOP_CONTROL):
+        
+        self.calibrate_all()
+        time.sleep(3.0)
+
+    def set_all_positions(self, positions: List[float]) -> None:
+        """
+        Set positions for all devices
+
+        Args:
+            positions: List of positions to set
+        """
+        for i, (node_id, device) in enumerate(self.devices.items()):
+            if i < len(positions):
+                if not device.set_position(positions[i]):
                     console.print(
-                        f"[red]Failed to enter closed loop control for device {node_id}[/red]"
+                        f"[yellow]Failed to set position for device {node_id}[/yellow]"
                     )
-                    continue
-                # if not device.set_controller_mode(control_mode, input_mode):
-                #     console.print(
-                #         f"[red]Failed to set controller mode for device {node_id}[/red]"
-                #     )
-                #     continue
+            else:
+                console.print(
+                    f"[yellow]Not enough positions provided for device {node_id}[/yellow]"
+                )
+    def arm_all(self) -> None:
+        # set control mode
+        for node_id, device in self.devices.items():
+            if not device.set_axis_state(AxisState.CLOSED_LOOP_CONTROL):
+                console.print(
+                    f"[red]Failed to enter closed loop control for device {node_id}[/red]"
+                )
+                time.sleep(0.5)
+                continue
 
-                console.print(f"[green]Initialized device {node_id}[/green]")
-
+        
     def init_device(
         self,
         node_id: int,
@@ -328,10 +347,63 @@ class ODriveManager:
                 console.print(f"[green]E-stopped device {node_id}[/green]")
     def calibrate_all(self) -> None:
         """
-        Calibrate all devices
+        Calibrate all devices sequentially, grouped by joint type
         """
-        # calibrate only the first device in devices 
-        node_id = list(self.devices.keys())[8]
-        device = self.devices[node_id]
-        console.print(f"[blue]Calibrating device {device.name}...[/blue]")
-        device.calibrate()
+        # Get all the node_ids
+        node_ids = list(self.devices.keys())
+        # Group by joint type (Hip Abduction/Adduction, Hip Flexion/Extension, Knee Flexion/Extension)
+        haa_ids = [x for x in node_ids if x % 3 == 0]
+        hfe_ids = [x for x in node_ids if x % 3 == 1]
+        kfe_ids = [x for x in node_ids if x % 3 == 2]
+
+        # Calibrate each group sequentially
+        joint_groups = [
+            ("Hip Abduction/Adduction", haa_ids),
+            ("Hip Flexion/Extension", hfe_ids),
+            ("Knee Flexion/Extension", kfe_ids)
+        ]
+        
+        for group_name, ids in joint_groups:
+            console.print(f"[blue]Starting calibration of {group_name} joints...[/blue]")
+            
+            for node_id in ids:
+                device = self.devices[node_id]
+                console.print(f"[blue]Calibrating {device.name} (Node ID: {node_id})...[/blue]")
+                
+                # Clear errors before calibration
+                device.clear_errors()
+                
+                # Perform motor calibration first
+                console.print(f"[yellow]Starting motor calibration for {device.name}...[/yellow]")
+                result = device.set_axis_state(AxisState.MOTOR_CALIBRATION, timeout=10.0)
+                if result != AxisState.IDLE:
+                    console.print(f"[red]Motor calibration failed for {device.name}, proceeding to next device[/red]")
+                    continue
+                console.print(f"[green]Motor calibration completed for {device.name}[/green]")
+                
+                # Wait a moment between calibration steps
+                time.sleep(0.5)
+                
+                # Then perform encoder calibration
+                console.print(f"[yellow]Starting encoder calibration for {device.name}...[/yellow]")
+                result = device.set_axis_state(AxisState.ENCODER_OFFSET_CALIBRATION, timeout=10.0)
+                if result != AxisState.IDLE:
+                    console.print(f"[red]Encoder calibration failed for {device.name}, proceeding to next device[/red]")
+                    continue
+                console.print(f"[green]Encoder calibration completed for {device.name}[/green]")
+                
+                # Final verification
+                error, state, procedure_result, _ = device.request_heartbeat(timeout=3.0)
+                if error != 0:
+                    console.print(f"[red]Device {device.name} has errors after calibration[/red]")
+                else:
+                    console.print(f"[green]Device {device.name} successfully calibrated[/green]")
+                
+                # Wait before moving to next device
+                time.sleep(1.0)
+            
+            console.print(f"[blue]Completed calibration of {group_name} joints[/blue]")
+            # Wait between joint groups
+            time.sleep(2.0)
+        
+        console.print(f"[green]All device calibration completed[/green]")

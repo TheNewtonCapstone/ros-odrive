@@ -20,21 +20,14 @@ class ODriveNode(Node):
         config_file_path = "config/newton.yaml"
         self.manager.load_configs_from_file(config_file_path)
         self.can_interface.start(self.manager.process_can_message)
-        self.manager.calibrate_all()
-
-
+        # self.manager.calibrate_all()
+        self.manager.initialize_all()
+        self.manager.arm_all()
         
-        
-
-
-        ## Declare parameters
-        ## get parameters
-        # validate paarametes
-        # configure devices
-        # create pub
-        # create sub
-        # setup timers
-        # start can interface
+        # pass in a gait 
+        standing_gait = [0, 0.5, -1, 0.0, 0.5, -1, 0.0, 0.5, -1, 0.0, 0.5, -1]
+        standing_gait = [0, -0.5, 1]
+        self.manager.set_all_positions(standing_gait)
 
     
     def position_callback(self, msg):

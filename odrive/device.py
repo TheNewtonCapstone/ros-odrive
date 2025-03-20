@@ -180,16 +180,19 @@ class ODriveDevice:
 
         cmd_id = OdriveCANCommands.SET_INPUT_POS
         arb_id = self.make_arbitration_id(self.node_id, cmd_id)
+        #print debug info
+        self.console.print(f"Setting position to {turns} for node {self.name}")
 
         # Convert to appropriate format
-        vel_ff_int = int(self.ravelocity_ff * 1000)  # Scale by 1000 per ODrive protocol
-        torque_ff_int = int(torque_ff * 1000)  # Scale by 1000 per ODrive protocol
+        # vel_ff_int = int(self.ravelocity_ff * 1000)  # Scale by 1000 per ODrive protocol
+        # torque_ff_int = int(torque_ff * 1000)  # Scale by 1000 per ODrive protocol
 
-        # Clamp to int16 range
-        vel_ff_int = max(min(self.rad_to_turns(vel_ff_int), 32767), -32768)
-        torque_ff_int = max(min(torque_ff_int, 32767), -32768)
+        # # Clamp to int16 range
+        # vel_ff_int = max(min(self.rad_to_turns(vel_ff_int), 32767), -32768)
+        # torque_ff_int = max(min(torque_ff_int, 32767), -32768)
 
-        data = struct.pack("<fhh", turns, vel_ff_int, torque_ff_int)
+        # f is for float, h is for int16
+        data = struct.pack("<fhh", turns, 0, 0)
         success = self.send_can_frame(arb_id, data)
 
         if success:
@@ -302,7 +305,7 @@ class ODriveDevice:
         """
         return (node_id << Arbitration.NODE_ID_SIZE | cmd_id)
 
-    def set_axis_state(self, state: AxisState, timeout:float=3.0) -> bool:
+    def set_axis_state(self, state: AxisState, timeout:float=3.0) -> AxisState:
         """
         Set the state of the axis.
 
@@ -312,73 +315,51 @@ class ODriveDevice:
         Returns:
             bool: True if message was sent successfully
         """
-        # send command 
-        # request heartbeat again to check if the axis is in the desired state
-        # keep asking for a hearbeat until the axis until process is done
 
         cmd_id = OdriveCANCommands.SET_AXIS_STATE
+        # get initial state
+        err, curr_state, procedure_result, traj_done = self.request_heartbeat(timeout=3.0)
+        if procedure_result == ODriveProcedureResult.CANCELLED:
+            time.sleep(0.1)
+            self.clear_errors()
+    
+            
         # request a to check if the axis is a state we can use 
-        err, curr_state, procedure_result, traj_done = self.request_heartbeat(timeout=3.0)
-        self.console.print(f"err {err}, curr_state {curr_state}, procedure_result {procedure_result}, traj_done {traj_done}")
-        err, curr_state, procedure_result, traj_done = self.request_heartbeat(timeout=3.0)
-        # self._print_heartbeat(err, curr_state, procedure_result, traj_done)
-        # err, curr_state, procedure_result, traj_done = self.request_heartbeat(timeout=3.0)
-        self.console.print(f"err {err}, curr_state {curr_state}, procedure_result {procedure_result}, traj_done {traj_done}")
-        # self._print_heartbeat(err, curr_state, procedure_result, traj_done)
-        
-        
-        # # do checks to make the axis is in the desired state
-        # if err != ODriveErrorCode.NO_ERROR or  procedure_result != ODriveProcedureResult.SUCCESS:
-        #     # change the int into an intenum of ODriveErrorCode
-        #     procedure_result = ODriveProcedureResult(procedure_result)
-        #     raise ODriveException(
-        #         self.node_id,ODriveErrorCode(err), ODriveProcedureResult(procedure_result), f"Error setting axis state for node {self.name}"
-        #     )
-
-        self.console.print(f"Setting axis state to {state.name} for node {self.name}")
-        
-        # start_time = time.time()
-        # while time.time() - start_time < timeout:
-        #     err, curr_state, procedure_result, traj_done = self.request_heartbeat(timeout=3.0)
-        #     self.console.print(f"err {err}, curr_state {curr_state}, procedure_result {procedure_result}, traj_done {traj_done}")
-        #     # self._print_heartbeat(err, curr_state, procedure_result, traj_done)
-        #     time.sleep(0.1)
-            
-            
-            
-            
-        
-        # data = struct.pack("<I", int(state))
-        # self.send_can_frame(
-        #     self.make_arbitration_id(self.node_id, cmd_id), 
-        #     data
-        # )
-        # return self.poll_heartbeat(AxisState(state), AxisState(state), timeout=3.0)
+        data = struct.pack("<I", int(state))
+        self.send_can_frame(
+            self.make_arbitration_id(self.node_id, cmd_id), 
+            data
+        )
+        result = self.poll_heartbeat(timeout=timeout) 
+        return result
         
 
-    def poll_heartbeat(self, transition_state: AxisState, end_state: AxisState, timeout: int=3.0) -> bool:
+    def poll_heartbeat(self,timeout: int=3.0) -> AxisState:
         """ Periodically poll the heartbeat to check if the axis is in the desired state and get to the desired state
         Args:
-            transition_state: The state the axis is transitioning to
-            end_state: The state the axis should be in
+            end_state: The desired state of the axis
+            timeout: Maximum time to wait for the axis to get to the desired
         Returns:
             bool: True if the axis is in the desired state and transition state and false if the request timeout
         """
-        err, curr_state, procedure_result, traj_done = self.request_heartbeat(timeout=3.0)
-        self._print_heartbeat(err, curr_state, procedure_result, traj_done)
-        # start_time = time.time()
-        # while time.time() - start_time < timeout:
-        #     if err != 0 or procedure_result != 0:
-        #         raise ODriveException(
-        #             self.node_id,ODriveErrorCode(err), ODriveProcedureResult(procedure_result), f"Error setting axis state for node {self.name}"
-        #         )
-        #     if curr_state == transition_state:
-        #         time.sleep(0.01)
-        #         continue
-        #     if curr_state == end_state:
-        #         return True
-        # time.sleep(0.1)
-        return False
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            err, curr_state, procedure_result, traj_done = self.request_heartbeat(timeout=3.0)
+
+            if err != 0: 
+                raise ODriveException(
+                    self.node_id,ODriveErrorCode(err), ODriveProcedureResult(procedure_result), f"Error setting axis state for node {self.name}"
+                )
+            if procedure_result == ODriveProcedureResult.BUSY:
+                self._print_heartbeat(err, curr_state, procedure_result, traj_done)
+                time.sleep(0.1)
+                continue
+            if procedure_result == ODriveProcedureResult.SUCCESS:
+                time.sleep(1)
+                return AxisState(curr_state)
+                
+        time.sleep(1)
+        return AxisState(0)
     def set_controller_mode(
         self, control_mode: ControlMode, input_mode: InputMode
     ) -> bool:
@@ -447,6 +428,7 @@ class ODriveDevice:
             self.position = pos
             self.velocity = vel
             self.last_receive_time = time.time()
+        self.console.print(f"Received encoder estimates {self.position} for node {self.name}")
 
     def handle_heartbeat(self, data: bytes) -> None:
         """
@@ -719,4 +701,5 @@ class ODriveDevice:
             bool: True if calibration successful, False otherwise
         """
         # Start calibration
-        self.set_axis_state(AxisState.MOTOR_CALIBRATION)
+        self.set_axis_state(AxisState.FULL_CALIBRATION_SEQUENCE, timeout=20.0)
+          

@@ -28,25 +28,20 @@ class Arbitration(IntEnum):
     NODE_ID_SIZE = 5
     ARBITRATION_ID_SIZE = 0x1F
 
-
+    
 @dataclass
-class RequestTracker:
+class ResponseFuture:
     """
     Class to track requests and their responses
     """
-    request_id: int
-    node_id: int
-    cmd_id: int
-    timestamp: float
+    created_at: float
+    event: threading.Event
     response: Optional[bytes] = None
-    completed: bool = False
-    event: threading.Event = threading.Event()
+    def wait(self, timeout: float) -> Optional[bytes]:
+        if self.event.wait(timeout):
+            return self.response
+        return None
 
-    def __post_init__(self):
-        if self.event is None:
-            self.event = threading.Event() 
-    
-    
 class CanInterface:
     """
     Interface for communicating with ODrives over CAN bus
@@ -62,8 +57,9 @@ class CanInterface:
         self.running: bool = False
 
         # Request tracking
-        self.requests: Dict[int, RequestTracker] = {}
-        self.requests_lock = threading.Lock()
+        self.request_lookup: Dict[int, Tuple[int, int]] = {}
+        self.pending_responses: Dict[str, ResponseFuture] = {}
+        self.responses_lock = threading.Lock()
         
         
 
@@ -106,7 +102,7 @@ class CanInterface:
         """
         self.running = False
         if self.receive_thread and self.receive_thread.is_alive():
-            self.receive_thread.join(timeout=1.0)
+            self.receive_thread.join(timeout=10.0)
         if self.bus:
             self.bus.shutdown()
             self.bus = None
@@ -136,72 +132,46 @@ class CanInterface:
             return False
         
 
-    def request(
-        self,
-        node_id: int,
-        cmd_id: int,
-        data: bytes,
-        timeout: float = 3.0) -> Optional[bytes]:
-
-        """ 
-        Send a can frame and waiting a response.
-        Args:
-            node_id: Node ID
-            cmd_id: Command ID
-            data: Data to send
-            response_cmd_id: Command ID of the response
-            timeout: Timeout in seconds
-        """
+    def request(self, node_id: int, cmd_id: int, data: bytes, timeout: float = 3.0) -> Optional[bytes]:
+        # Generate a unique request ID
         request_id = str(uuid.uuid4())
-        tracker = RequestTracker(
-            request_id=request_id,
-            node_id=node_id,
-            cmd_id=cmd_id,
-            timestamp=time.time(),
+        
+        # Create a future for this response
+        future = ResponseFuture(
+            created_at=time.time(),
+            event=threading.Event()
         )
         
-
-        key = (node_id, cmd_id)
-
-        with self.requests_lock:
-            self.requests[key] = tracker
+        # Store the future
+        with self.responses_lock:
+            self.pending_responses[request_id] = future
+        
+        # Construct and send the message
+        arbitration_id = (node_id << Arbitration.NODE_ID_SIZE | cmd_id)
+        
+        # Store the request_id -> (node_id, cmd_id) mapping for lookup in receive loop
+        self.request_lookup[request_id] = (node_id, cmd_id)
         
         try:
-            # send the frame 
-            arbitration_id = (node_id << Arbitration.NODE_ID_SIZE | cmd_id) 
-            console.print(f"Sending request: {arbitration_id} - data: {bytes(data)}")
+            # Send the message
             success = self.send_frame(arbitration_id, data)
-
-
             if not success:
-                console.print(f"[red]Failed to send request: {key}[/red]")
-                raise MessageNotSentException(f"Failed to send request: {node_id} - {cmd_id}")
+                return None
             
-            if tracker.event.wait(timeout=timeout):
-                response = tracker.response
-                console.print(f"[blue] Received response for request: {key} with response {response}[/blue]")
-                console.print(f"tracker response: {tracker.response}")
-                
-              
-                return tracker.response
-            else:
-                raise TimeoutError("Timeout waiting for response")
-
-        except TimeoutError as e:
-            console.print(f"Timeout waiting for response: {e}") 
+            # Wait for the response
+            return future.wait(timeout)
         finally:
-            with self.requests_lock:
-                if key in self.requests and self.requests[key].request_id == request_id:
-                    console.print(f"Removing request: {key}")
-                    del self.requests[key]
+            # Clean up
+            with self.responses_lock:
+                if request_id in self.pending_responses:
+                    del self.pending_responses[request_id]
+                if request_id in self.request_lookup:
+                    del self.request_lookup[request_id]
                 
                 
                 
         
     def _receive_loop(self):
-        """
-        Background thread to receive can messages
-        """
         try:
             while self.running:
                 msg = self.bus.recv(timeout=0.1)
@@ -209,30 +179,30 @@ class CanInterface:
                     node_id = msg.arbitration_id >> Arbitration.NODE_ID_SIZE
                     cmd_id = msg.arbitration_id & Arbitration.ARBITRATION_ID_SIZE
                     
-                    if node_id == 11 and cmd_id == 1:   
-                        console.print(f"Received message: {msg}")
-
-                    # console.print(f"Received message: {msg} - Node ID: {node_id} - Command ID: {cmd_id}")
+                    # Check if this response matches any pending request
+                    with self.responses_lock:
+                        # Find matching requests
+                        matches = []
+                        for req_id, (req_node, req_cmd) in self.request_lookup.items():
+                            if req_node == node_id and req_cmd == cmd_id:
+                                matches.append(req_id)
+                        
+                        # If we have matches, fulfill the oldest request first (FIFO)
+                        if matches:
+                            # Sort by creation time
+                            matches.sort(key=lambda x: self.pending_responses[x].created_at)
+                            oldest_request = matches[0]
+                            
+                            # Set the response
+                            future = self.pending_responses[oldest_request]
+                            future.response = bytes(msg.data)
+                            future.event.set()
                     
-                    # check if the message we get is awaiting for a response
-                    # TODO : for perfomance create a thread tha manages the requests
-                    key = (node_id, cmd_id)
-
-                    if key in self.requests:
-                        console.print(f"[yellow] Received response for request: {key} data ={bytes(msg.data)} [/yellow]")
-                        # print all the elements in the requests
-                        # Store the response and signal completion
-                        self.requests[key].response = bytes(msg.data)
-                        self.requests[key].completed = True
-                        self.requests[key].event.set()
-
+                    # Call the callback if set
                     if self.callback:
-                        pass
-                        # self.callback(node_id, cmd_id, msg.data)
+                        self.callback(node_id, cmd_id, msg.data)
         except Exception as e:
-            console.print(
-                f"Can intereface: Error receiving CAN message in receive loop: {e}"
-            )
+            console.print(f"CAN interface: Error in receive loop: {e}")
             time.sleep(0.1)
         
 
