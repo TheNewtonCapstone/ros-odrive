@@ -428,7 +428,7 @@ class ODriveDevice:
             self.position = pos
             self.velocity = vel
             self.last_receive_time = time.time()
-        self.console.print(f"Received encoder estimates {self.position} for node {self.name}")
+        # self.console.print(f"Received encoder estimates {self.position} for node {self.name}")
 
     def handle_heartbeat(self, data: bytes) -> None:
         """
@@ -702,4 +702,10 @@ class ODriveDevice:
         """
         # Start calibration
         self.set_axis_state(AxisState.FULL_CALIBRATION_SEQUENCE, timeout=20.0)
+    def get_name(self):
+        return self.name
+    def get_position(self):
+        return self.turns_to_rad(self.position)
+    def get_velocity(self):
+        return self.turns_to_rad(self.velocity)
           

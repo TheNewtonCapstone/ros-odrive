@@ -101,8 +101,35 @@ class ODriveManager:
             return True
         return False
 
+    def get_all_positions(self) -> List[float]:
+        """
+        Get positions of all devices
+        """
+        positions = []
+        
+        # loop and position missinf from - 0 to 11 
+        for i in range(11):
+            if i in self.devices:
+                positions.append(self.devices[i].get_position())
+            else:
+                positions.append(0.0)
+        return positions
+        
+    def get_all_velocities(self) -> List[float]:
+        """
+        Get velocities of all devices
+        """
+        velocities = []
+        for i in range(11):
+            if i in self.devices:
+                velocities.append(self.devices[i].get_velocity())
+            else:
+                velocities.append(0.0)
+        return velocities
     def get_device(self, node_id: int) -> Optional[ODriveDevice]:
         return self.devices.get(node_id)
+    def get_devices(self) -> Dict[int, ODriveDevice]:
+        return self.devices
 
     def request(self, 
                 node_id: int, 
@@ -261,16 +288,23 @@ class ODriveManager:
         Args:
             positions: List of positions to set
         """
+        # get list of available devices
+        available_devices = list(self.devices.keys())
+                
+        
+        # get the array of avaialble devices
         for i, (node_id, device) in enumerate(self.devices.items()):
             if i < len(positions):
-                if not device.set_position(positions[i]):
-                    console.print(
-                        f"[yellow]Failed to set position for device {node_id}[/yellow]"
-                    )
+                if node_id in available_devices:
+                    res = device.set_position(positions[i])
+                    if not res:
+                        raise Exception(f"Failed to set position for device {node_id}")
+                        continue
             else:
                 console.print(
                     f"[yellow]Not enough positions provided for device {node_id}[/yellow]"
                 )
+                
     def arm_all(self) -> None:
         # set control mode
         for node_id, device in self.devices.items():
