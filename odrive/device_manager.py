@@ -308,7 +308,7 @@ class ODriveManager:
         self.calibrate_all()
         time.sleep(3.0)
 
-    def set_all_positions(self, positions: List[float]) -> None:
+    def set_all_positions(self, positions: dict[int, float]) -> None:
         """
         Set positions for all devices
 
@@ -414,7 +414,7 @@ class ODriveManager:
             return
         console.print(f"[green]Initialized device {node_id}[/green]")
 
-    def set_position(self, node_id, position):
+    def set_position(self, node_id: int, position: float):
         device = self.devices.get(node_id)
         if not device:
             console.print(f"[red]Device with node_id {node_id} not found[/red]")

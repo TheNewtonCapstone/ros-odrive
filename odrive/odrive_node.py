@@ -51,13 +51,32 @@ class ODriveNode(Node):
 
         # pass in a gait
         
-        standing_gait = [0, -0.5, 1, 0, -0.5, 1, 0, -0.5, 1, 0, -0.5, 1]
-        # standing_gait = [0, -0.5, 1]
+        standing_gait = { 
+            0: 0.0,
+            1:-0.5,
+            2: 1, 
+            3: 0.0,
+            4: -0.5 ,
+            5: 1,
+            6: 0.0,
+            7: - 0.5,
+            8: 1,
+            9: 0.0,
+            10: -0.5,
+            11: 1}
+            
+            
+        
+
         self.manager.set_all_positions(standing_gait)
 
     def position_callback(self, msg):
         # command for position command messages
         pprint(f"received position command {msg.data}")
+        devices = self.manager.get_devices()
+        for i in range(11):
+            if i in devices:
+                self.manager.set_position(node_id=i, position=msg.data[i])
         # self.manager.set_all_positions(msg.data)
 
     def publish_joint_states(self):
