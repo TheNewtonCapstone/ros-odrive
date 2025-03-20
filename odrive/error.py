@@ -1,11 +1,12 @@
 from enum import IntEnum
 
+
 class ODriveErrorCode(IntEnum):
     # see https://docs.odriverobotics.com/v/latest/fibre_types/com_odriverobotics_ODrive.html#ODrive.Error for more details
-    
+
     NO_ERROR = 0
     INITILIZATION_ERROR = 1
-    SYSTEM_LEVEL = 2 
+    SYSTEM_LEVEL = 2
     TIMING_ERROR = 4
     MISSING_ESTIMATE = 8
     BAD_CONFIG = 16
@@ -13,7 +14,7 @@ class ODriveErrorCode(IntEnum):
     MISSING_INPUT = 64
     DC_BUS_OVER_VOLTAGE = 256
     DC_BUS_UNDER_VOLTAGE = 512
-    DC_BUS_OVER_CURRENT = 1024  # either 
+    DC_BUS_OVER_CURRENT = 1024  # either
     DC_BUS_OVER_REGEN_CURRENT = 2048
     CURRENT_LIMITATION = 4096
     MOTOR_OVER_TEMP = 8192
@@ -24,11 +25,11 @@ class ODriveErrorCode(IntEnum):
     ESTOP_REQUESTED = 33554432
     SPINOUT_DETECTED = 67108864
     BRAKE_RESISTOR_DISARMED = 134217728
-    THERMISTOR_DISCONNECTED = 1073741824 
-    
+    THERMISTOR_DISCONNECTED = 268435456
+    CALIBRATION_ERROR = 1073741824
 
-    
-class ODriveProcedureResult(IntEnum):    
+
+class ODriveProcedureResult(IntEnum):
     # https://docs.odriverobotics.com/v/latest/fibre_types/com_odriverobotics_ODrive.html#ODrive.ProcedureResult
     SUCCESS = 0
     BUSY = 1
@@ -43,8 +44,8 @@ class ODriveProcedureResult(IntEnum):
     ILLEGAL_HALL_STATE = 10
     TIMEOUT = 11
     HOMING_WITHOUT_ENDSTOP = 12
-    NOT_CALIBRATED = 14 
-    NOT_CONVERGING = 15 # 
+    NOT_CALIBRATED = 14
+    NOT_CONVERGING = 15  #
     """  
     The calibration did not converge.
 
@@ -53,6 +54,3 @@ class ODriveProcedureResult(IntEnum):
     For instance during AxisState.ENCODER_OFFSET_CALIBRATION the encoder did not move sufficiently to determine the direction between encoder and motor.
 
     Try changing the calibration parameters."""
-    
-    
-    

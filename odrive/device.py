@@ -1,15 +1,21 @@
 import math
 import struct
 from enum import IntEnum, unique
-from typing import Callable, Dict, Optional, List, Tuple, Any
+from typing import Callable, Optional, Tuple
 import time
 from .can_interface import Arbitration
 from rich.console import Console
-import pprint
 from .error import ODriveErrorCode, ODriveProcedureResult
-from .exception import ODriveException
+from .exception import ODriveException, NotArmedException, CalibrationFailedException
 
+
+@unique
 class AxisState(IntEnum):
+    """
+    Enum class for the current statues of an ODrive axis, comes from the ODrive docs.
+    See https://docs.odriverobotics.com/v/latest/manual/can-protocol.html for more information.
+    """
+
     UNDEFINED = 0
     IDLE = 1
     STARTUP_SEQUENCE = 2
@@ -24,10 +30,6 @@ class AxisState(IntEnum):
     ENCODER_HALL_PHASE_receive_thread = 12
     ENCODER_HALL_POLARITY_CALIBRATION = 13
 
-
-
-
-    
 
 @unique
 class OdriveCANCommands(IntEnum):
@@ -121,7 +123,6 @@ class ODriveDevice:
         """
         self.name = name
         self.node_id = node_id
-        self.position_limit = position_limit  # position limit in radians
         self.min_position = -position_limit
         self.max_position = position_limit
         self.direction = direction  # direction of the motor, this used to keep the all movements uniform
@@ -160,9 +161,13 @@ class ODriveDevice:
     #######################################################################
     # Actuator methods (high-level)
     #######################################################################
+
     def set_position(
-        self, pos: float, velocity_ff: float = 0.0, torque_ff: float = 0.0
-    ) -> bool:
+        self,
+        pos: float,
+        velocity_ff: float = 0.0,
+        torque_ff: float = 0.0,
+    ):
         """
         Set the position of the axis.
 
@@ -174,14 +179,21 @@ class ODriveDevice:
         Returns:
             bool: True if message was sent successfully
         """
-        # Clamp to limits
+
+        err, state, procedure_result, traj_done = self.request_heartbeat()
+        # self._print_heartbeat(err, state, procedure_result, traj_done)
+        if state != AxisState.CLOSED_LOOP_CONTROL:
+            raise NotArmedException(
+                self.node_id,
+                message="Axis is not in closed loop control mode",
+                error_code=ODriveErrorCode(err),
+                procedure_result=ODriveProcedureResult(procedure_result),
+            )
 
         turns = self.rad_to_turns(pos)
 
         cmd_id = OdriveCANCommands.SET_INPUT_POS
         arb_id = self.make_arbitration_id(self.node_id, cmd_id)
-        #print debug info
-        self.console.print(f"Setting position to {turns} for node {self.name}")
 
         # Convert to appropriate format
         # vel_ff_int = int(self.ravelocity_ff * 1000)  # Scale by 1000 per ODrive protocol
@@ -198,9 +210,7 @@ class ODriveDevice:
         if success:
             self.last_send_time = time.time()
 
-        return success
-
-    def set_velocity(self, vel: float, torque_ff: float = 0.0) -> bool:
+    def set_velocity(self, vel: float, torque_ff: float = 0.0):
         """
         Set the velocity of the axis.
 
@@ -211,6 +221,15 @@ class ODriveDevice:
         Returns:
             bool: True if message was sent successfully
         """
+        err, state, procedure_result, traj_done = self.request_heartbeat()
+        if state != AxisState.CLOSED_LOOP_CONTROL:
+            raise NotArmedException(
+                self.node_id,
+                message="Axis is not in closed loop control mode",
+                error_code=ODriveErrorCode(err),
+                procedure_result=ODriveProcedureResult(procedure_result),
+            )
+
         cmd_id = OdriveCANCommands.SET_INPUT_VEL
         arb_id = self.make_arbitration_id(self.node_id, cmd_id)
         data = struct.pack("<ff", self.rad_to_turns(vel), torque_ff)
@@ -219,9 +238,7 @@ class ODriveDevice:
         if success:
             self.last_send_time = time.time()
 
-        return success
-
-    def set_torque(self, torque: float) -> bool:
+    def set_torque(self, torque: float):
         """
         Set the torque of the axis.
 
@@ -231,6 +248,15 @@ class ODriveDevice:
         Returns:
             bool: True if message was sent successfully
         """
+        err, state, procedure_result, traj_done = self.request_heartbeat()
+        if state != AxisState.CLOSED_LOOP_CONTROL:
+            raise NotArmedException(
+                self.node_id,
+                message="Axis is not in closed loop control mode",
+                error_code=ODriveErrorCode(err),
+                procedure_result=ODriveProcedureResult(procedure_result),
+            )
+
         cmd_id = OdriveCANCommands.SET_INPUT_TORQUE
         arb_id = self.make_arbitration_id(self.node_id, cmd_id)
         data = struct.pack("<f", torque)
@@ -238,37 +264,6 @@ class ODriveDevice:
 
         if success:
             self.last_send_time = time.time()
-
-        return success
-
-    def normalize_angle(self, angle: float) -> float:
-        """Normalize the position to the range [-pi, pi]"""
-        angle = angle % (2 * math.pi)
-        return angle if angle <= math.pi else (angle - 2 * math.pi)
-
-    def shortest_path(self, target_position: float) -> float:
-        """Find the shortest path to the target position. we do this to avoid taking the long path when the motor is at the other end of the range"""
-        target_position = self.normalize_angle(target_position)
-        current_position = self.normalize_angle(self.position)
-        diff = target_position - current_position
-        return diff if abs(diff) <= math.pi else -diff
-
-    def rad_to_turns(self, rad: float) -> float:
-        """Convert radians to turns"""
-        rad_with_direction = self.normalize_angle(rad) * self.direction
-        return (rad_with_direction * self.RAD_TO_TURNS) + self.offset
-
-    def turns_to_rad(self, turns: float) -> float:
-        """Convert turns to radians"""
-        return (turns - self.offset) * self.TURNS_TO_RAD * self.direction
-
-    def is_within_limits(self, pos: float) -> bool:
-        """Check if the position (rad) is within the limits"""
-        return self.min_position <= pos <= self.max_position
-
-    def clamp_to_limits(self, pos: float) -> float:
-        """Clamp the position to the limits"""
-        return max(self.min_position, min(self.max_position, pos))
 
     def request_encoder_estimates(self) -> bool:
         """
@@ -292,6 +287,7 @@ class ODriveDevice:
     #######################################################################
     # CAN methods
     #######################################################################
+
     def make_arbitration_id(self, node_id: int, cmd_id: int) -> int:
         """
         Create the arbitration ID for a CAN message.
@@ -303,9 +299,9 @@ class ODriveDevice:
         Returns:
             int: Arbitration ID
         """
-        return (node_id << Arbitration.NODE_ID_SIZE | cmd_id)
+        return node_id << Arbitration.NODE_ID_SIZE | cmd_id
 
-    def set_axis_state(self, state: AxisState, timeout:float=3.0) -> AxisState:
+    def set_axis_state(self, state: AxisState, timeout: float = 3.0) -> AxisState:
         """
         Set the state of the axis.
 
@@ -317,25 +313,25 @@ class ODriveDevice:
         """
 
         cmd_id = OdriveCANCommands.SET_AXIS_STATE
+
         # get initial state
-        err, curr_state, procedure_result, traj_done = self.request_heartbeat(timeout=3.0)
+        err, curr_state, procedure_result, traj_done = self.request_heartbeat(
+            timeout=0.1
+        )
+
         if procedure_result == ODriveProcedureResult.CANCELLED:
             time.sleep(0.1)
             self.clear_errors()
-    
-            
-        # request a to check if the axis is a state we can use 
-        data = struct.pack("<I", int(state))
-        self.send_can_frame(
-            self.make_arbitration_id(self.node_id, cmd_id), 
-            data
-        )
-        result = self.poll_heartbeat(timeout=timeout) 
-        return result
-        
 
-    def poll_heartbeat(self,timeout: int=3.0) -> AxisState:
-        """ Periodically poll the heartbeat to check if the axis is in the desired state and get to the desired state
+        # request a to check if the axis is a state we can use
+        data = struct.pack("<I", int(state))
+        self.send_can_frame(self.make_arbitration_id(self.node_id, cmd_id), data)
+
+        time.sleep(0.5)
+        return self.poll_heartbeat(timeout=timeout)
+
+    def poll_heartbeat(self, timeout: float = 3.0) -> AxisState:
+        """Periodically poll the heartbeat to check if the axis is in the desired state and get to the desired state
         Args:
             end_state: The desired state of the axis
             timeout: Maximum time to wait for the axis to get to the desired
@@ -344,24 +340,30 @@ class ODriveDevice:
         """
         start_time = time.time()
         while time.time() - start_time < timeout:
-            err, curr_state, procedure_result, traj_done = self.request_heartbeat(timeout=3.0)
-
-            if err != 0: 
+            err, curr_state, procedure_result, traj_done = self.request_heartbeat()
+            self._print_heartbeat(err, curr_state, procedure_result, traj_done)
+            if err != 0:
                 raise ODriveException(
-                    self.node_id,ODriveErrorCode(err), ODriveProcedureResult(procedure_result), f"Error setting axis state for node {self.name}"
+                    self.node_id,
+                    ODriveErrorCode(err),
+                    ODriveProcedureResult(procedure_result),
+                    f"Error setting axis state for node {self.name}",
                 )
+
             if procedure_result == ODriveProcedureResult.BUSY:
                 self._print_heartbeat(err, curr_state, procedure_result, traj_done)
                 time.sleep(0.1)
                 continue
+
             if procedure_result == ODriveProcedureResult.SUCCESS:
-                time.sleep(1)
-                return AxisState(curr_state)
-                
-        time.sleep(1)
-        return AxisState(0)
+                break
+
+        return self.request_heartbeat()
+
     def set_controller_mode(
-        self, control_mode: ControlMode, input_mode: InputMode
+        self,
+        control_mode: ControlMode,
+        input_mode: InputMode,
     ) -> bool:
         """
         Set the controller mode of the axis.
@@ -387,15 +389,17 @@ class ODriveDevice:
             self.console.print(f"[red]{e}[/red]")
             return False
 
-
     def _print_heartbeat(
-        self, 
-        error: int, 
-        state: int, 
-        procedure_result: int, 
-        trajectory_done: int
-        ):
-        self.console.print(f"Node: {self.name} Error: {ODriveErrorCode(error).name}, State: {AxisState(state).name}, Procedure Result: {ODriveProcedureResult(procedure_result).name}, Trajectory Done: {trajectory_done}")
+        self,
+        error: int,
+        state: int,
+        procedure_result: int,
+        trajectory_done: int,
+    ):
+        self.console.print(
+            f"Node: {self.name} Error: {ODriveErrorCode(error).name}, State: {AxisState(state).name}, Procedure Result: {ODriveProcedureResult(procedure_result).name}, Trajectory Done: {trajectory_done}"
+        )
+
     def clear_errors(self, identify: bool = False) -> bool:
         """
         Clear the errors on the ODrive.
@@ -414,6 +418,19 @@ class ODriveDevice:
         if success:
             self.last_send_time = time.time()
 
+        # make sure the error is cleared
+        err, procedure_result, res_state, _ = self.request_heartbeat()
+        if err != 0:
+            raise ODriveException(
+                self.node_id,
+                ODriveErrorCode(err),
+                ODriveProcedureResult(procedure_result),
+                f"Error clearing errors for node {self.name}",
+            )
+
+        if res_state != AxisState.IDLE:
+            self.set_axis_state(AxisState.IDLE)
+
         return success
 
     def handle_encoder_estimates(self, data: bytes) -> None:
@@ -428,7 +445,6 @@ class ODriveDevice:
             self.position = pos
             self.velocity = vel
             self.last_receive_time = time.time()
-        # self.console.print(f"Received encoder estimates {self.position} for node {self.name}")
 
     def handle_heartbeat(self, data: bytes) -> None:
         """
@@ -477,49 +493,7 @@ class ODriveDevice:
         if handler:
             handler(data)
 
-    def set_limits(self, velocity_limit: float, current_limit: float) -> bool:
-        """
-        Set velocity and current limits
-
-        Args:
-            velocity_limit: Maximum velocity in turns/s
-            current_limit: Maximum current in Amps
-
-        Returns:
-            bool: True if message was sent successfully
-        """
-        cmd_id = OdriveCANCommands.SET_LIMITS
-        arb_id = self.make_arbitration_id(self.node_id, cmd_id)
-        data = struct.pack("<ff", velocity_limit, current_limit)
-        success = self.send_can_frame(arb_id, data)
-
-        if success:
-            self.last_send_time = time.time()
-
-        return success
-
-    def reboot(self, save_config: bool = False) -> bool:
-        """
-        Reboot the ODrive
-
-        Args:
-            save_config: If True, save configuration before rebooting
-
-        Returns:
-            bool: True if message was sent successfully
-        """
-        cmd_id = OdriveCANCommands.REBOOT
-        arb_id = self.make_arbitration_id(self.node_id, cmd_id)
-        action = 1 if save_config else 0  # 0: reboot, 1: save_configuration()
-        data = struct.pack("<B", action)
-        success = self.send_can_frame(arb_id, data)
-
-        if success:
-            self.last_send_time = time.time()
-
-        return success
-
-    def set_absolute_position(self, position: float) -> bool:
+    def set_absolute_position(self, position: float):
         """
         Sets the encoder position to a specified value
 
@@ -537,7 +511,7 @@ class ODriveDevice:
         if success:
             self.last_send_time = time.time()
 
-        return success
+        # TODO: ADD CHECKING TO SEE IF ENCODER
 
     def estop(self) -> bool:
         """
@@ -553,6 +527,7 @@ class ODriveDevice:
         if success:
             self.last_send_time = time.time()
 
+        # TODO: ADD CHECKING TO see if the state is IDLE
         return success
 
     def set_pos_gain(self, pos_gain: float) -> bool:
@@ -657,55 +632,125 @@ class ODriveDevice:
 
         return success
 
-    def set_address_msg(self, sn: int, node_id: int) -> bool:
-        # to be implemented, setting addressees using odrive's serial number
-        pass
-
-    def get_address_msg(self, sn: int) -> bool:
-        # to be implemented, getting addressees using odrive's serial number
-        pass
-    
-    def request_heartbeat(self, timeout: float = 3.0) -> Tuple[int, int, int, int]:
+    def request_heartbeat(self, timeout: float = 0.1) -> Tuple[int, int, int, int]:
         """
         Request a heartbeat and wait for the response
 
         Args:
             timeout: Maximum time to wait for response:%y
-            
-            
+
+
         Returns:
             bool: True if heartbeat received and processed, False otherwise
         """
-            
+
         data = self.request(
-            self.node_id, 
-            OdriveCANCommands.GET_HEARTBEAT, 
-            b"", 
-            timeout=timeout
+            self.node_id,
+            OdriveCANCommands.GET_HEARTBEAT,
+            b"",
+            timeout=timeout,
         )
 
         error, state, procedure_result, trajectory_done = struct.unpack(
-            "<IBBB", data[:7]
+            "<IBBB",
+            data[:7],
         )
-        self.console.print(f"[red]Request heartbeat response {data} for node {self.name}[/red]")
+
         return error, state, procedure_result, trajectory_done
 
-    def calibrate(self, timeout: float = 3.0) -> bool:
+    def calibrate(self, timeout: float = 20.0):
         """
         Run motor calibration and wait for completion
-        
+
         Args:
             timeout: Maximum time to wait for calibration
-            
+
         Returns:
             bool: True if calibration successful, False otherwise
         """
         # Start calibration
-        self.set_axis_state(AxisState.FULL_CALIBRATION_SEQUENCE, timeout=20.0)
+        self.set_axis_state(AxisState.FULL_CALIBRATION_SEQUENCE, timeout=timeout)
+
+        return self.request_heartbeat(timeout=timeout)
+
     def get_name(self):
         return self.name
+
     def get_position(self):
         return self.turns_to_rad(self.position)
+
     def get_velocity(self):
         return self.turns_to_rad(self.velocity)
-          
+
+    def set_limits(self, velocity_limit: float, current_limit: float) -> bool:
+        """
+        Set velocity and current limits
+
+        Args:
+            velocity_limit: Maximum velocity in turns/s
+            current_limit: Maximum current in Amps
+
+        Returns:
+            bool: True if message was sent successfully
+        """
+        cmd_id = OdriveCANCommands.SET_LIMITS
+        arb_id = self.make_arbitration_id(self.node_id, cmd_id)
+        data = struct.pack("<ff", velocity_limit, current_limit)
+        success = self.send_can_frame(arb_id, data)
+
+        if success:
+            self.last_send_time = time.time()
+
+        return success
+
+    def reboot(self, save_config: bool = False) -> bool:
+        """
+        Reboot the ODrive
+
+        Args:
+            save_config: If True, save configuration before rebooting
+
+        Returns:
+            bool: True if message was sent successfully
+        """
+        cmd_id = OdriveCANCommands.REBOOT
+        arb_id = self.make_arbitration_id(self.node_id, cmd_id)
+        action = 1 if save_config else 0  # 0: reboot, 1: save_configuration()
+        data = struct.pack("<B", action)
+        success = self.send_can_frame(arb_id, data)
+
+        if success:
+            self.last_send_time = time.time()
+
+        return success
+
+    def normalize_angle(self, angle: float) -> float:
+        """Normalize the position to the range [-pi, pi]"""
+        angle = angle % (2 * math.pi)
+        return angle if angle <= math.pi else (angle - 2 * math.pi)
+
+    def shortest_path(self, target_position: float) -> float:
+        """Find the shortest path to the target position. we do this to avoid taking the long path when the motor is at the other end of the range"""
+        target_position = self.normalize_angle(target_position)
+        current_position = self.normalize_angle(self.position)
+        diff = target_position - current_position
+
+        return diff if abs(diff) <= math.pi else -diff
+
+    def rad_to_turns(self, rad: float) -> float:
+        """Convert radians to turns"""
+        rad_with_direction = self.normalize_angle(rad) * self.direction
+        return (rad_with_direction * self.RAD_TO_TURNS) + self.offset
+
+    def turns_to_rad(self, turns: float) -> float:
+        """Convert turns to radians"""
+
+        return (turns - self.offset) * self.TURNS_TO_RAD * self.direction
+
+    def is_within_limits(self, pos: float) -> bool:
+        """Check if the position (rad) is within the limits"""
+        return self.min_position <= pos <= self.max_position
+
+    def clamp_to_limits(self, pos: float) -> float:
+        """Clamp the position to the limits"""
+        return max(self.min_position, min(self.max_position, pos))

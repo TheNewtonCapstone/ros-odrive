@@ -2,8 +2,11 @@ import time
 from typing import Dict, List, Optional, Callable
 from rich.console import Console
 
+from odrive.error import ODriveErrorCode, ODriveProcedureResult
+
 from .device import ODriveDevice, AxisState, ControlMode, InputMode, OdriveCANCommands
 from .can_interface import CanInterface, Arbitration
+from .exception import CalibrationFailedException, DeviceNotFoundException
 import yaml
 import os
 import rclpy
@@ -25,22 +28,21 @@ class ODriveManager:
         self.can_interface = can_interface
         self.devices: Dict[int, ODriveDevice] = {}  # node_id -> device
         self.running = False
+        self.motor_calibrated = False
 
     def start(self, config_file_path: str) -> None:
         """
         Start the manager and all devices
         """
         self.can_interface.start(self.process_can_message)
-            # check if the devices in the config file match the discovered devices
-            # discovered_nodes = self.enumerate_devices()
-            # for node_id, device in self.devices.items():
-            #     if node_id not in discovered_nodes:
-            #         raise Exception(
-            #             f"Device with node_id {node_id} in config file not found"
-            #         )
-    
+        # check if the devices in the config file match the discovered devices
+        # discovered_nodes = self.enumerate_devices()
+        # for node_id, device in self.devices.items():
+        #     if node_id not in discovered_nodes:
+        #         raise Exception(
+        #             f"Device with node_id {node_id} in config file not found"
+        #         )
 
-    
     def load_configs_from_file(self, config_file_path: str) -> None:
         config = {}
         try:
@@ -66,12 +68,17 @@ class ODriveManager:
 
             # print all the added devices
             for node_id, device in self.devices.items():
-                console.print(f"[green]Added device {device.name} with node_id {node_id}[/green]")
+                console.print(
+                    f"[green]Added device {device.name} with node_id {node_id}[/green]"
+                )
+
         except FileNotFoundError:
-            console.print(f"[red]Failed to load config file: {config_file_path}. Current working directory is {os.getcwd()}[/red]")
+            console.print(
+                f"[red]Failed to load config file: {config_file_path}. Current working directory is {os.getcwd()}[/red]"
+            )
             self.stop()
             return
-        
+
     def add_device(
         self,
         node_id: int,
@@ -87,7 +94,11 @@ class ODriveManager:
             return self.devices[node_id]
 
         device = ODriveDevice(
-            node_id, name, direction, position_limit, gear_ratio, 
+            node_id,
+            name,
+            direction,
+            position_limit,
+            gear_ratio,
             self.send_can_frame,
             self.request,
         )
@@ -106,15 +117,15 @@ class ODriveManager:
         Get positions of all devices
         """
         positions = []
-        
-        # loop and position missinf from - 0 to 11 
+
+        # loop and position missinf from - 0 to 11
         for i in range(11):
             if i in self.devices:
                 positions.append(self.devices[i].get_position())
             else:
                 positions.append(0.0)
         return positions
-        
+
     def get_all_velocities(self) -> List[float]:
         """
         Get velocities of all devices
@@ -126,16 +137,16 @@ class ODriveManager:
             else:
                 velocities.append(0.0)
         return velocities
+
     def get_device(self, node_id: int) -> Optional[ODriveDevice]:
         return self.devices.get(node_id)
+
     def get_devices(self) -> Dict[int, ODriveDevice]:
         return self.devices
 
-    def request(self, 
-                node_id: int, 
-                cmd_id: int, 
-                data: bytes, 
-                timeout:float=2.0) -> bool:
+    def request(
+        self, node_id: int, cmd_id: int, data: bytes, timeout: float = 2.0
+    ) -> bool:
         """
         Send a request message to a device
 
@@ -176,9 +187,9 @@ class ODriveManager:
             device.process_can_message(cmd_id, data)
         else:
             # pprint.pprint(self.devices)
-            console.print(
-                f"[dim]Received message from unknown device: node_id={node_id}, cmd_id={cmd_id}[/dim]"
-            )
+            # console.print(
+            #     f"[dim]Received message from unknown device: node_id={node_id}, cmd_id={cmd_id}[/dim]"
+            # )
             pass
 
     def stop(self) -> None:
@@ -241,6 +252,23 @@ class ODriveManager:
 
         return discovered_nodes
 
+    def calibrate_one(self, node_id):
+        device = self.devices.get(node_id)
+        if not device:
+            raise DeviceNotFoundException(f"Device with node_id {node_id} not found")
+
+        console.print(f"[blue]Starting calibration of {device.name}...[/blue]")
+
+        err, state, procedure_res, _ = device.calibrate()
+
+        if (
+            err != ODriveErrorCode.NO_ERROR
+            or procedure_res != ODriveProcedureResult.SUCCESS
+        ):
+            self.stop()
+
+        return err, state, procedure_res, _
+
     def initialize_all(
         self,
         control_mode: ControlMode = ControlMode.POSITION_CONTROL,
@@ -277,7 +305,6 @@ class ODriveManager:
                     time.sleep(0.5)
                     continue
 
-        
         self.calibrate_all()
         time.sleep(3.0)
 
@@ -290,21 +317,17 @@ class ODriveManager:
         """
         # get list of available devices
         available_devices = list(self.devices.keys())
-                
-        
+
         # get the array of avaialble devices
         for i, (node_id, device) in enumerate(self.devices.items()):
             if i < len(positions):
                 if node_id in available_devices:
-                    res = device.set_position(positions[i])
-                    if not res:
-                        raise Exception(f"Failed to set position for device {node_id}")
-                        continue
+                    device.set_position(positions[i])
             else:
                 console.print(
                     f"[yellow]Not enough positions provided for device {node_id}[/yellow]"
                 )
-                
+
     def arm_all(self) -> None:
         # set control mode
         for node_id, device in self.devices.items():
@@ -315,7 +338,6 @@ class ODriveManager:
                 time.sleep(0.5)
                 continue
 
-        
     def init_device(
         self,
         node_id: int,
@@ -379,6 +401,26 @@ class ODriveManager:
                 console.print(f"[red]Failed to estop device {node_id}[/red]")
             else:
                 console.print(f"[green]E-stopped device {node_id}[/green]")
+
+    def arm_one(self, node_id):
+        device = self.devices.get(node_id)
+        if not device:
+            console.print(f"[red]Device with node_id {node_id} not found[/red]")
+            return
+        if not device.set_axis_state(AxisState.CLOSED_LOOP_CONTROL):
+            console.print(
+                f"[red]Failed to enter closed loop control for device {node_id}[/red]"
+            )
+            return
+        console.print(f"[green]Initialized device {node_id}[/green]")
+
+    def set_position(self, node_id, position):
+        device = self.devices.get(node_id)
+        if not device:
+            console.print(f"[red]Device with node_id {node_id} not found[/red]")
+            return
+        device.set_position(position)
+
     def calibrate_all(self) -> None:
         """
         Calibrate all devices sequentially, grouped by joint type
@@ -392,52 +434,68 @@ class ODriveManager:
 
         # Calibrate each group sequentially
         joint_groups = [
-            ("Hip Abduction/Adduction", haa_ids),
-            ("Hip Flexion/Extension", hfe_ids),
-            ("Knee Flexion/Extension", kfe_ids)
+            ("kfe", kfe_ids),
+            ("hfe", hfe_ids),
+            ("haa", haa_ids),
         ]
-        
+
         for group_name, ids in joint_groups:
-            console.print(f"[blue]Starting calibration of {group_name} joints...[/blue]")
-            
+            console.print(
+                f"[blue]Starting calibration of {group_name} joints...[/blue]"
+            )
+
             for node_id in ids:
                 device = self.devices[node_id]
-                console.print(f"[blue]Calibrating {device.name} (Node ID: {node_id})...[/blue]")
-                
+                console.print(
+                    f"[blue]Calibrating {device.name} (Node ID: {node_id})...[/blue]"
+                )
+
                 # Clear errors before calibration
                 device.clear_errors()
-                
+
                 # Perform motor calibration first
-                console.print(f"[yellow]Starting motor calibration for {device.name}...[/yellow]")
-                result = device.set_axis_state(AxisState.MOTOR_CALIBRATION, timeout=10.0)
-                if result != AxisState.IDLE:
-                    console.print(f"[red]Motor calibration failed for {device.name}, proceeding to next device[/red]")
-                    continue
-                console.print(f"[green]Motor calibration completed for {device.name}[/green]")
-                
+                console.print(
+                    f"[yellow]Starting motor calibration for {device.name}...[/yellow]"
+                )
+
+                err, state, procedure_result, _ = self.calibrate_one(node_id)
+
+                if (
+                    err != ODriveErrorCode.NO_ERROR
+                    or procedure_result != ODriveProcedureResult.SUCCESS
+                ):
+                    console.print(
+                        f"[red]Motor calibration failed for {device.name}, stopping...[/red]"
+                    )
+
+                    self.stop()
+                    return
+
+                if state == AxisState.IDLE:
+                    if group_name == "kfe":
+                        self.arm_one(node_id)
+                        self.set_position(node_id, -3.14)
+                    elif group_name == "hfe":
+                        self.arm_one(node_id)
+                        self.set_position(node_id, -1.57)
+                    elif group_name == "haa":
+                        self.arm_one(node_id)
+                        self.set_position(node_id, 0)
+
+                    console.print(
+                        f"[green]Motor calibration completed for {device.name}[/green]"
+                    )
+
                 # Wait a moment between calibration steps
                 time.sleep(0.5)
-                
-                # Then perform encoder calibration
-                console.print(f"[yellow]Starting encoder calibration for {device.name}...[/yellow]")
-                result = device.set_axis_state(AxisState.ENCODER_OFFSET_CALIBRATION, timeout=10.0)
-                if result != AxisState.IDLE:
-                    console.print(f"[red]Encoder calibration failed for {device.name}, proceeding to next device[/red]")
-                    continue
-                console.print(f"[green]Encoder calibration completed for {device.name}[/green]")
-                
-                # Final verification
-                error, state, procedure_result, _ = device.request_heartbeat(timeout=3.0)
-                if error != 0:
-                    console.print(f"[red]Device {device.name} has errors after calibration[/red]")
-                else:
-                    console.print(f"[green]Device {device.name} successfully calibrated[/green]")
-                
-                # Wait before moving to next device
-                time.sleep(1.0)
-            
+
             console.print(f"[blue]Completed calibration of {group_name} joints[/blue]")
+
             # Wait between joint groups
             time.sleep(2.0)
-        
+
         console.print(f"[green]All device calibration completed[/green]")
+        self.motor_calibrated = True
+
+        
+        
