@@ -17,10 +17,10 @@ class ODriveNode(Node):
         self.console.print("Initializing ODrive CAN controller node")
         self.can_interface = CanInterface()
         self.manager = ODriveManager(self.can_interface)
-        config_file_path = "../configs/newton.yaml"
+        config_file_path = "config/newton.yaml"
         self.manager.load_configs_from_file(config_file_path)
-        # self.can_interface.start(self.manager.process_can_message)
-        # self.manager.calibrate_all()
+        self.can_interface.start(self.manager.process_can_message)
+        self.manager.calibrate_all()
 
 
         

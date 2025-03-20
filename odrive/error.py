@@ -3,6 +3,7 @@ from enum import IntEnum
 class ODriveErrorCode(IntEnum):
     # see https://docs.odriverobotics.com/v/latest/fibre_types/com_odriverobotics_ODrive.html#ODrive.Error for more details
     
+    NO_ERROR = 0
     INITILIZATION_ERROR = 1
     SYSTEM_LEVEL = 2 
     TIMING_ERROR = 4
@@ -27,7 +28,7 @@ class ODriveErrorCode(IntEnum):
     
 
     
-class ODriveProcedureResult:    
+class ODriveProcedureResult(IntEnum):    
     # https://docs.odriverobotics.com/v/latest/fibre_types/com_odriverobotics_ODrive.html#ODrive.ProcedureResult
     SUCCESS = 0
     BUSY = 1

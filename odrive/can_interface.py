@@ -10,6 +10,7 @@ from rich import print
 from rich.console import Console
 from dataclasses import dataclass, field 
 import uuid
+from .exception import CanException, MessageNotSentException
 
 console = Console()
 
@@ -133,6 +134,7 @@ class CanInterface:
         except Exception as e:
             console.print(f"[red]Can interface: Error sending CAN message: {e}[/red]")
             return False
+        
 
     def request(
         self,
@@ -167,12 +169,20 @@ class CanInterface:
         try:
             # send the frame 
             arbitration_id = (node_id << Arbitration.NODE_ID_SIZE | cmd_id) 
+            console.print(f"Sending request: {arbitration_id} - data: {bytes(data)}")
             success = self.send_frame(arbitration_id, data)
 
+
             if not success:
-                return None
+                console.print(f"[red]Failed to send request: {key}[/red]")
+                raise MessageNotSentException(f"Failed to send request: {node_id} - {cmd_id}")
             
             if tracker.event.wait(timeout=timeout):
+                response = tracker.response
+                console.print(f"[blue] Received response for request: {key} with response {response}[/blue]")
+                console.print(f"tracker response: {tracker.response}")
+                
+              
                 return tracker.response
             else:
                 raise TimeoutError("Timeout waiting for response")
@@ -180,9 +190,9 @@ class CanInterface:
         except TimeoutError as e:
             console.print(f"Timeout waiting for response: {e}") 
         finally:
-
             with self.requests_lock:
                 if key in self.requests and self.requests[key].request_id == request_id:
+                    console.print(f"Removing request: {key}")
                     del self.requests[key]
                 
                 
@@ -198,20 +208,27 @@ class CanInterface:
                 if msg and not msg.is_error_frame:
                     node_id = msg.arbitration_id >> Arbitration.NODE_ID_SIZE
                     cmd_id = msg.arbitration_id & Arbitration.ARBITRATION_ID_SIZE
+                    
+                    if node_id == 11 and cmd_id == 1:   
+                        console.print(f"Received message: {msg}")
 
+                    # console.print(f"Received message: {msg} - Node ID: {node_id} - Command ID: {cmd_id}")
                     
                     # check if the message we get is awaiting for a response
+                    # TODO : for perfomance create a thread tha manages the requests
                     key = (node_id, cmd_id)
-                    if key in self.requests and not self.requests[key].completed:
-                        console.print(f"[yellow] Received response for request: {key} [/yellow]")
 
+                    if key in self.requests:
+                        console.print(f"[yellow] Received response for request: {key} data ={bytes(msg.data)} [/yellow]")
+                        # print all the elements in the requests
                         # Store the response and signal completion
                         self.requests[key].response = bytes(msg.data)
                         self.requests[key].completed = True
                         self.requests[key].event.set()
 
                     if self.callback:
-                        self.callback(node_id, cmd_id, msg.data)
+                        pass
+                        # self.callback(node_id, cmd_id, msg.data)
         except Exception as e:
             console.print(
                 f"Can intereface: Error receiving CAN message in receive loop: {e}"

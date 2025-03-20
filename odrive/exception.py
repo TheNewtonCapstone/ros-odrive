@@ -1,6 +1,6 @@
 import logging
 from enum import IntEnum
-from error import ODriveErrorCode, ODriveProcedureResult
+from .error import ODriveErrorCode, ODriveProcedureResult
 
 
     
@@ -8,6 +8,9 @@ from error import ODriveErrorCode, ODriveProcedureResult
 class CanException(Exception):
     def __init__(self, *args):
         super().__init__(*args) 
+    pass
+
+class MessageNotSentException(CanException):
     pass
 class NotConnectedException(CanException):
     pass

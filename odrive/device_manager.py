@@ -7,6 +7,7 @@ from .can_interface import CanInterface, Arbitration
 import yaml
 import os
 import rclpy
+import pprint
 
 console = Console()
 
@@ -107,7 +108,6 @@ class ODriveManager:
                 node_id: int, 
                 cmd_id: int, 
                 data: bytes, 
-                response_id: int, 
                 timeout:float=2.0) -> bool:
         """
         Send a request message to a device
@@ -120,7 +120,7 @@ class ODriveManager:
         Returns:
             bool: True if successful, False otherwise
         """
-        return self.can_interface.request(node_id, cmd_id, data, response_id)
+        return self.can_interface.request(node_id, cmd_id, data)
 
     def send_can_frame(self, arbitration_id: int, data: bytes) -> bool:
         """
@@ -148,6 +148,7 @@ class ODriveManager:
         if device:
             device.process_can_message(cmd_id, data)
         else:
+            # pprint.pprint(self.devices)
             console.print(
                 f"[dim]Received message from unknown device: node_id={node_id}, cmd_id={cmd_id}[/dim]"
             )
@@ -330,6 +331,7 @@ class ODriveManager:
         Calibrate all devices
         """
         # calibrate only the first device in devices 
-        node_id = list(self.devices.keys())[2]
+        node_id = list(self.devices.keys())[8]
         device = self.devices[node_id]
+        console.print(f"[blue]Calibrating device {device.name}...[/blue]")
         device.calibrate()
