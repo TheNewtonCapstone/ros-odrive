@@ -301,7 +301,11 @@ class ODriveDevice:
         """
         return node_id << Arbitration.NODE_ID_SIZE | cmd_id
 
-    def set_axis_state(self, state: AxisState, timeout: float = 3.0) -> AxisState:
+    def set_axis_state(
+        self,
+        state: AxisState,
+        timeout: float = 3.0,
+    ) -> Tuple[int, int, int, int]:
         """
         Set the state of the axis.
 
@@ -330,7 +334,7 @@ class ODriveDevice:
         time.sleep(0.5)
         return self.poll_heartbeat(timeout=timeout)
 
-    def poll_heartbeat(self, timeout: float = 3.0) -> AxisState:
+    def poll_heartbeat(self, timeout: float = 3.0) -> Tuple[int, int, int, int]:
         """Periodically poll the heartbeat to check if the axis is in the desired state and get to the desired state
         Args:
             end_state: The desired state of the axis
@@ -377,9 +381,12 @@ class ODriveDevice:
         cmd_id = OdriveCANCommands.SET_CONTROLLER_MODE
         arb_id = self.make_arbitration_id(self.node_id, cmd_id)
         # TODO: ADD SAFETY CHECKS CONTROL MODE SHOULD BE IDLE
-        
+
         data = struct.pack("<II", int(control_mode), int(input_mode))
         success = self.send_can_frame(arb_id, data)
+
+        if success:
+            self.last_send_time = time.time()
 
         return self.poll_heartbeat()
 
@@ -506,6 +513,30 @@ class ODriveDevice:
             self.last_send_time = time.time()
 
         # TODO: ADD CHECKING TO SEE IF ENCODER
+
+    def arm(self, timeout: float = 3.0):
+        err, state, procedure_result, traj_done = self.set_axis_state(
+            AxisState.CLOSED_LOOP_CONTROL
+        )
+
+        if err != ODriveErrorCode.NO_ERROR or state != AxisState.CLOSED_LOOP_CONTROL:
+            self.console.print(
+                f"[red]Failed to enter closed loop control for device {self.node_id}[/red]"
+            )
+        else:
+            self.console.print(f"[green]Armed device {self.node_id}[/green]")
+
+        return err, state, procedure_result, traj_done
+
+    def disarm(self, timeout: float = 3.0):
+        err, state, procedure_result, traj_done = self.set_axis_state(AxisState.IDLE)
+
+        if err != ODriveErrorCode.NO_ERROR or state != AxisState.IDLE:
+            self.console.print(f"[red]Failed to disarm device {self.node_id}[/red]")
+        else:
+            self.console.print(f"[green]Disarmed device {self.node_id}[/green]")
+
+        return err, state, procedure_result, traj_done
 
     def estop(self) -> bool:
         """
@@ -663,9 +694,35 @@ class ODriveDevice:
             bool: True if calibration successful, False otherwise
         """
         # Start calibration
-        self.set_axis_state(AxisState.FULL_CALIBRATION_SEQUENCE, timeout=timeout)
+        return self.set_axis_state(AxisState.FULL_CALIBRATION_SEQUENCE, timeout=timeout)
 
-        return self.request_heartbeat(timeout=timeout)
+    def is_calibrated(self) -> bool:
+        """
+        Check if the motor is calibrated
+
+        Returns:
+            bool: True if motor is calibrated, False otherwise
+        """
+
+        err, state, procedure_result, _ = self.arm()
+
+        is_calibrated = state == AxisState.CLOSED_LOOP_CONTROL
+
+        if is_calibrated:
+            self.disarm()
+        else:
+            self.clear_errors()
+
+        return is_calibrated
+
+    def is_armed(self) -> bool:
+        """
+        Check if the motor is armed
+
+        Returns:
+            bool: True if motor is armed, False otherwise
+        """
+        return self.axis_state == AxisState.CLOSED_LOOP_CONTROL
 
     def get_name(self):
         return self.name
@@ -736,13 +793,17 @@ class ODriveDevice:
         normalized_rad = self.normalize_angle(rad)
         direction_rad = normalized_rad * self.direction
         offset_rad = self.offset * self.direction
-        self.console.print(f"Normalized rad: {normalized_rad}, direction rad: {direction_rad}, offset rad: {offset_rad}")
+        self.console.print(
+            f"Normalized rad: {normalized_rad}, direction rad: {direction_rad}, offset rad: {offset_rad}"
+        )
         rad_with_direction = self.normalize_angle(rad) * self.direction
         return (rad_with_direction * self.RAD_TO_TURNS) + self.offset
 
     def turns_to_rad(self, turns: float) -> float:
         """Convert turns to radians"""
-        return self.normalize_angle((turns - self.offset) * self.TURNS_TO_RAD * self.direction)
+        return self.normalize_angle(
+            (turns - self.offset) * self.TURNS_TO_RAD * self.direction
+        )
 
     def is_within_limits(self, pos: float) -> bool:
         """Check if the position (rad) is within the limits"""

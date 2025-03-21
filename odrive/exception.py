@@ -10,6 +10,18 @@ import logging
 logger = logging.getLogger("odrive")
 
 
+def is_heartbeat_error(
+    error_code: int, state: int, procedure_result: int, trap_traj: int
+) -> bool:
+    if (
+        error_code == ODriveErrorCode.NO_ERROR
+        and procedure_result == ODriveProcedureResult.SUCCESS
+    ):
+        return False
+
+    return True
+
+
 class TimeoutException(Exception):
     pass
 
