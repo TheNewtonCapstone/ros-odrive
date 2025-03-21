@@ -74,8 +74,10 @@ class CanInterface:
             return False
 
         try:
-            self.bus = can.Bus(
-                channel=self.interface, bustype="socketcan", bitrate=self.bitrate
+            self.bus: can.Bus = can.Bus(
+                channel=self.interface,
+                bustype="socketcan",
+                bitrate=self.bitrate,
             )
 
             self.callback = callback
@@ -121,16 +123,21 @@ class CanInterface:
                 raise ValueError("CAN interface not started")
 
             msg = can.Message(
-                arbitration_id=arbitration_id, data=data, is_extended_id=False
+                arbitration_id=arbitration_id,
+                data=data,
+                is_extended_id=False,
             )
             self.bus.send(msg)
             return True
-
         except Exception as e:
             raise MessageNotSentException(f"Error sending CAN message: {str(e)}") from e
 
     def request(
-        self, node_id: int, cmd_id: int, data: bytes, timeout: float = 3.0
+        self,
+        node_id: int,
+        cmd_id: int,
+        data: bytes,
+        timeout: float = 3.0,
     ) -> Optional[bytes]:
         # Generate a unique request ID
         request_id = str(uuid.uuid4())

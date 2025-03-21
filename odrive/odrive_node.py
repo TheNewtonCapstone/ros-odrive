@@ -31,6 +31,7 @@ class ODriveNode(Node):
             Float32MultiArray, "joints_cmd_positions", self.position_callback, 10
         )
 
+
         self.position_pub = self.create_publisher(
             Float32MultiArray, "joints_state_positions", 10
         )
@@ -44,8 +45,9 @@ class ODriveNode(Node):
 
         self.can_interface.start(self.manager.process_can_message)
         time.sleep(1)
+        # self.manager.get_device(8).request_heartbeat() 
+        self.manager.calibrate_one(9)
         self.manager.calibrate_all()
-        # self.manager.get_device(3).request_heartbeat() 
         # print(self.manager.get_device(2).request_heartbeat())
         
 
@@ -83,6 +85,7 @@ class ODriveNode(Node):
         self.manager.set_all_positions(msg.data)
 
     def publish_joint_states(self):
+        pprint(self.manager.get_torques())
         return
         # publish joint states
         if not self.manager.devices:

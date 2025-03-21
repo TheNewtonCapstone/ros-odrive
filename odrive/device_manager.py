@@ -331,6 +331,7 @@ class ODriveManager:
                     f"[yellow]Not enough positions provided for device {node_id}[/yellow]"
                 )
 
+    
     def arm_all(self) -> None:
         # set control mode
         for node_id, device in self.devices.items():
@@ -529,3 +530,11 @@ class ODriveManager:
         self.motor_calibrated = True
 
         time.sleep(10)
+    def get_torques(self)-> List[float]:
+        torques = []
+        for i in range(11):
+            if i in self.devices:
+                torques.append(self.devices[i].get_torque())
+            else:
+                torques.append(0.0)
+        return torques

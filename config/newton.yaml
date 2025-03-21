@@ -76,7 +76,7 @@ motors_params:
     gear_ratio: 9.0
 
   HR_HAA:
-    enabled: False
+    enabled: True
     name: HR_HAA
     node_id: 9
     position_limit: 0.5

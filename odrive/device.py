@@ -474,6 +474,9 @@ class ODriveDevice:
             self.torque_estimate = torque_estimate
             self.last_receive_time = time.time()
 
+    def get_torque(self):
+        return self.torque_estimate
+    
     def process_can_message(self, cmd_id: int, data: bytes) -> None:
         """
             Process CAN message from the ODrive
