@@ -308,7 +308,7 @@ class ODriveManager:
         # self.calibrate_all()
         for node_id, device in self.devices.items():
             pass
-            
+
         # time.sleep(3.0)
 
     def set_all_positions(self, positions: dict[int, float]) -> None:
@@ -320,7 +320,6 @@ class ODriveManager:
         """
         # get list of available devices
         available_devices = list(self.devices.keys())
-
 
         # get the array of avaialble devices
         for i, (node_id, device) in enumerate(self.devices.items()):
@@ -442,8 +441,20 @@ class ODriveManager:
             ("hfe", hfe_ids),
             ("haa", haa_ids),
         ]
-         
-        pprint.pprint(joint_groups)
+
+        console.print("[blue]Starting calibration by joint groups...[/blue]")
+
+        def clear_and_calibrate(device: ODriveDevice):
+            console.print(
+                f"[blue]Calibrating {device.name} (Node ID: {device.node_id})...[/blue]"
+            )
+
+            device.clear_errors()
+
+            err, state, procedure_result, _ = self.calibrate_one(device.node_id)
+
+        # thread group for each joint group, so that we can calibrate them in parallel
+
         for group_name, ids in joint_groups:
             console.print(
                 f"[blue]Starting calibration of {group_name} joints...[/blue]"
@@ -463,44 +474,52 @@ class ODriveManager:
                     f"[yellow]Starting motor calibration for {device.name}...[/yellow]"
                 )
 
-                # err, state, procedure_result, _ = self.calibrate_one(node_id)
+                err, state, procedure_result, _ = self.calibrate_one(node_id)
 
-                # if (
-                #     err != ODriveErrorCode.NO_ERROR
-                #     or procedure_result != ODriveProcedureResult.SUCCESS
-                # ):
-                #     console.print(
-                #         f"[red]Motor calibration failed for {device.name}, stopping...[/red]"
-                #     )
+                if (
+                    err != ODriveErrorCode.NO_ERROR
+                    or procedure_result != ODriveProcedureResult.SUCCESS
+                ):
+                    console.print(
+                        f"[red]Motor calibration failed for {device.name}, stopping...[/red]"
+                    )
 
-                #     self.stop()
-                #     return
+                    self.stop()
+                    return
 
-                # if state == AxisState.IDLE:
-                device.set_controller_mode(ControlMode.POSITION_CONTROL, InputMode.TRAP_TRAJ)
-                    
-                if group_name == "kfe":
-                    self.arm_one(node_id)
-                    self.set_position(node_id, -3.14)
-                    console.print(f"Node ID: {node_id} at position {self.get_device(node_id).get_position()}")
-                elif group_name == "hfe":
-                    self.arm_one(node_id)
-                    if node_id == 7 or node_id == 10:
-                        self.set_position(node_id, 1.57)
-                    else:
-                        self.set_position(node_id, -1.57) 
-                    console.print(f"Node ID: {node_id} at position {self.get_device(node_id).get_position()}")
-                elif group_name == "haa":
-                    self.arm_one(node_id)
-                    self.set_position(node_id, 0.0)
+                if state == AxisState.IDLE:
+                    device.set_controller_mode(
+                        ControlMode.POSITION_CONTROL, InputMode.TRAP_TRAJ
+                    )
 
-                    console.print(f"Node ID: {node_id} at position {self.get_device(node_id).get_position()}")
-                console.print(
-                    f"[green]Motor calibration completed for {device.name}[/green]"
-                )
+                    if group_name == "kfe":
+                        self.arm_one(node_id)
+                        self.set_position(node_id, -3.14)
+                        console.print(
+                            f"Node ID: {node_id} at position {self.get_device(node_id).get_position()}"
+                        )
+                    elif group_name == "hfe":
+                        self.arm_one(node_id)
+                        if node_id == 7 or node_id == 10:
+                            self.set_position(node_id, 1.57)
+                        else:
+                            self.set_position(node_id, -1.57)
+                        console.print(
+                            f"Node ID: {node_id} at position {self.get_device(node_id).get_position()}"
+                        )
+                    elif group_name == "haa":
+                        self.arm_one(node_id)
+                        self.set_position(node_id, 0.0)
 
-                # Wait a moment between calibration steps
-                time.sleep(0.5)
+                    console.print(
+                        f"Node ID: {node_id} at position {self.get_device(node_id).get_position()}"
+                    )
+                    console.print(
+                        f"[green]Motor calibration completed for {device.name}[/green]"
+                    )
+
+                    # Wait a moment between calibration steps
+                    time.sleep(0.5)
 
             console.print(f"[blue]Completed calibration of {group_name} joints[/blue]")
 
@@ -510,6 +529,3 @@ class ODriveManager:
         self.motor_calibrated = True
 
         time.sleep(10)
-        
-        
-        
