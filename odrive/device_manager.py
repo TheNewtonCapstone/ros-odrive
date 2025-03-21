@@ -257,23 +257,6 @@ class ODriveManager:
 
         return discovered_nodes
 
-    def calibrate_one(self, node_id):
-        device = self.devices.get(node_id)
-        if not device:
-            raise DeviceNotFoundException(f"Device with node_id {node_id} not found")
-
-        console.print(f"[blue]Starting calibration of {device.name}...[/blue]")
-
-        err, state, procedure_res, _ = device.calibrate()
-
-        if (
-            err != ODriveErrorCode.NO_ERROR
-            or procedure_res != ODriveProcedureResult.SUCCESS
-        ):
-            self.stop()
-
-        return err, state, procedure_res, _
-
     def initialize_all(
         self,
         control_mode: ControlMode = ControlMode.POSITION_CONTROL,
@@ -417,6 +400,62 @@ class ODriveManager:
             return
         device.set_position(position)
 
+    def calibrate_group(self, group_name: str, node_ids: List[int]) -> None:
+        """
+        Calibrate a group of devices
+
+        Args:
+            group_name: Group name
+            node_ids: List of node IDs in the group
+        """
+        console.print(f"[blue]Starting calibration of {group_name} joints...[/blue]")
+
+        for node_id in node_ids:
+            device = self.devices.get(node_id)
+            if not device:
+                console.print(f"[red]Device with node_id {node_id} not found[/red]")
+                return
+
+            console.print(
+                f"[blue]Calibrating {device.name} (Node ID: {device.node_id})...[/blue]"
+            )
+
+            device.clear_errors()
+
+            heartbeat = -1, -1, -1, -1
+
+            # calibration is blocking, so no need to sleep
+            if not device.is_calibrated():
+                heartbeat = device.calibrate()
+
+            if is_heartbeat_error(*heartbeat):
+                console.print(f"[red]Calibration failed for {device.name}[/red]")
+                return
+
+            # arm is blocking, so no need to sleep
+            if not device.is_armed():
+                heartbeat = device.arm()
+
+            if is_heartbeat_error(*heartbeat):
+                console.print(f"[red]Arming failed for {device.name}[/red]")
+                return
+
+            # setting controller mode is also blocking, so no need to sleep
+            device.set_controller_mode(
+                ControlMode.POSITION_CONTROL,
+                InputMode.TRAP_TRAJ,
+            )
+
+            if is_heartbeat_error(*heartbeat):
+                console.print(
+                    f"[red]Setting controller mode failed for {device.name}[/red]"
+                )
+                return
+
+            device.set_position(0.0)
+
+        console.print(f"[blue]Completed calibration of {group_name} joints[/blue]")
+
     def calibrate_all(self) -> None:
         """
         Calibrate all devices sequentially, grouped by joint type
@@ -467,12 +506,16 @@ class ODriveManager:
 
                 result["heartbeat"] = heartbeat
                 return
-            
+
             # setting controller mode is also blocking, so no need to sleep
-            device.set_controller_mode(ControlMode.POSITION_CONTROL, InputMode.TRAP_TRAJ)
-            
+            device.set_controller_mode(
+                ControlMode.POSITION_CONTROL, InputMode.TRAP_TRAJ
+            )
+
             if is_heartbeat_error(*heartbeat):
-                console.print(f"[red]Setting controller mode failed for {device.name}[/red]")
+                console.print(
+                    f"[red]Setting controller mode failed for {device.name}[/red]"
+                )
 
                 result["heartbeat"] = heartbeat
                 return
@@ -480,7 +523,7 @@ class ODriveManager:
             result["heartbeat"] = heartbeat
 
             device.set_position(calibration_position)
-            
+
         console.print("[blue]Starting calibration by joint groups...[/blue]")
 
         for group_name, ids in joint_groups:
@@ -539,75 +582,3 @@ class ODriveManager:
 
         console.print(f"[green]All device calibration completed[/green]")
         self.devices_calibrated = True
-
-        return
-
-            for node_id in ids:
-                device = self.devices[node_id]
-                console.print(
-                    f"[blue]Calibrating {device.name} (Node ID: {node_id})...[/blue]"
-                )
-
-                # Clear errors before calibration
-                device.clear_errors()
-
-                # Perform motor calibration first
-                console.print(
-                    f"[yellow]Starting motor calibration for {device.name}...[/yellow]"
-                )
-
-                err, state, procedure_result, _ = self.calibrate_one(node_id)
-
-                if (
-                    err != ODriveErrorCode.NO_ERROR
-                    or procedure_result != ODriveProcedureResult.SUCCESS
-                ):
-                    console.print(
-                        f"[red]Motor calibration failed for {device.name}, stopping...[/red]"
-                    )
-
-                    self.stop()
-                    return
-
-                if state == AxisState.IDLE:
-                    device.set_controller_mode(
-                        ControlMode.POSITION_CONTROL, InputMode.TRAP_TRAJ
-                    )
-
-                    if group_name == "kfe":
-                        device.arm(node_id)
-                        self.set_position(node_id, -3.14)
-                        console.print(
-                            f"Node ID: {node_id} at position {self.get_device(node_id).get_position()}"
-                        )
-                    elif group_name == "hfe":
-                        self.arm_one(node_id)
-                        if node_id == 7 or node_id == 10:
-                            self.set_position(node_id, 1.57)
-                        else:
-                            self.set_position(node_id, -1.57)
-                        console.print(
-                            f"Node ID: {node_id} at position {self.get_device(node_id).get_position()}"
-                        )
-                    elif group_name == "haa":
-                        self.arm_one(node_id)
-                        self.set_position(node_id, 0.0)
-
-                    console.print(
-                        f"Node ID: {node_id} at position {self.get_device(node_id).get_position()}"
-                    )
-                    console.print(
-                        f"[green]Motor calibration completed for {device.name}[/green]"
-                    )
-
-                    # Wait a moment between calibration steps
-                    time.sleep(0.5)
-
-            console.print(f"[blue]Completed calibration of {group_name} joints[/blue]")
-
-            # Wait between joint groups
-
-        console.print(f"[green]All device calibration completed[/green]")
-        self.devices_calibrated = True
-
-        time.sleep(10)

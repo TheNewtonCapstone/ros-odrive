@@ -43,7 +43,7 @@ class ODriveNode(Node):
         # TODO: MAKE A VAR FOR THIS RATE
 
         self.can_interface.start(self.manager.process_can_message)
-        time.sleep(1)
+        time.sleep(4)
         self.manager.calibrate_all()
         # self.manager.get_device(3).request_heartbeat() 
         # print(self.manager.get_device(2).request_heartbeat())

@@ -51,7 +51,7 @@ class CanInterface:
         self.interface = interface
         self.bitrate = bitrate
 
-        self.bus: Optional[can.Bus] = None
+        self.bus: Optional[can.ThreadSafeBus] = None
         self.callback: Optional[Callable] = None
         self.receive_thread: Optional[threading.Thread] = None
         self.running: bool = False
@@ -74,8 +74,10 @@ class CanInterface:
             return False
 
         try:
-            self.bus = can.Bus(
-                channel=self.interface, bustype="socketcan", bitrate=self.bitrate
+            self.bus = can.ThreadSafeBus(
+                channel=self.interface,
+                bustype="socketcan",
+                bitrate=self.bitrate,
             )
 
             self.callback = callback
@@ -130,7 +132,11 @@ class CanInterface:
             raise MessageNotSentException(f"Error sending CAN message: {str(e)}") from e
 
     def request(
-        self, node_id: int, cmd_id: int, data: bytes, timeout: float = 3.0
+        self,
+        node_id: int,
+        cmd_id: int,
+        data: bytes,
+        timeout: float = 3.0,
     ) -> Optional[bytes]:
         # Generate a unique request ID
         request_id = str(uuid.uuid4())
