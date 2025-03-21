@@ -181,7 +181,6 @@ class ODriveDevice:
         """
 
         err, state, procedure_result, traj_done = self.request_heartbeat()
-        # self._print_heartbeat(err, state, procedure_result, traj_done)
         if state != AxisState.CLOSED_LOOP_CONTROL:
             raise NotArmedException(
                 self.node_id,
@@ -191,6 +190,7 @@ class ODriveDevice:
             )
 
         turns = self.rad_to_turns(pos)
+        self.console.print(f"Setting position to {pos} turns: {turns}")
 
         cmd_id = OdriveCANCommands.SET_INPUT_POS
         arb_id = self.make_arbitration_id(self.node_id, cmd_id)
@@ -341,7 +341,6 @@ class ODriveDevice:
         start_time = time.time()
         while time.time() - start_time < timeout:
             err, curr_state, procedure_result, traj_done = self.request_heartbeat()
-            self._print_heartbeat(err, curr_state, procedure_result, traj_done)
             if err != 0:
                 raise ODriveException(
                     self.node_id,
@@ -351,11 +350,11 @@ class ODriveDevice:
                 )
 
             if procedure_result == ODriveProcedureResult.BUSY:
-                self._print_heartbeat(err, curr_state, procedure_result, traj_done)
                 time.sleep(0.1)
                 continue
 
             if procedure_result == ODriveProcedureResult.SUCCESS:
+                self._print_heartbeat(err, curr_state, procedure_result, traj_done)
                 break
 
         return self.request_heartbeat()
@@ -375,19 +374,14 @@ class ODriveDevice:
         Returns:
             bool: True if message was sent successfully
         """
-        try:
-            cmd_id = OdriveCANCommands.SET_CONTROLLER_MODE
-            arb_id = self.make_arbitration_id(self.node_id, cmd_id)
-            data = struct.pack("<II", int(control_mode), int(input_mode))
-            success = self.send_can_frame(arb_id, data)
-            if not success:
-                raise Exception("Failed to set controller mode for node {self.name}")
+        cmd_id = OdriveCANCommands.SET_CONTROLLER_MODE
+        arb_id = self.make_arbitration_id(self.node_id, cmd_id)
+        # TODO: ADD SAFETY CHECKS CONTROL MODE SHOULD BE IDLE
+        
+        data = struct.pack("<II", int(control_mode), int(input_mode))
+        success = self.send_can_frame(arb_id, data)
 
-            self.last_send_time = time.time()
-            return success
-        except Exception as e:
-            self.console.print(f"[red]{e}[/red]")
-            return False
+        return self.poll_heartbeat()
 
     def _print_heartbeat(
         self,
@@ -423,9 +417,9 @@ class ODriveDevice:
         if err != 0:
             raise ODriveException(
                 self.node_id,
+                f"Error clearing errors for node {self.name}",
                 ODriveErrorCode(err),
                 ODriveProcedureResult(procedure_result),
-                f"Error clearing errors for node {self.name}",
             )
 
         if res_state != AxisState.IDLE:
@@ -739,13 +733,16 @@ class ODriveDevice:
 
     def rad_to_turns(self, rad: float) -> float:
         """Convert radians to turns"""
+        normalized_rad = self.normalize_angle(rad)
+        direction_rad = normalized_rad * self.direction
+        offset_rad = self.offset * self.direction
+        self.console.print(f"Normalized rad: {normalized_rad}, direction rad: {direction_rad}, offset rad: {offset_rad}")
         rad_with_direction = self.normalize_angle(rad) * self.direction
         return (rad_with_direction * self.RAD_TO_TURNS) + self.offset
 
     def turns_to_rad(self, turns: float) -> float:
         """Convert turns to radians"""
-
-        return (turns - self.offset) * self.TURNS_TO_RAD * self.direction
+        return self.normalize_angle((turns - self.offset) * self.TURNS_TO_RAD * self.direction)
 
     def is_within_limits(self, pos: float) -> bool:
         """Check if the position (rad) is within the limits"""

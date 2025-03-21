@@ -36,7 +36,7 @@ motors_params:
     gear_ratio: 9.0
 
   FR_HFE:
-    enabled: False
+    enabled: True
     name: FR_HFE
     node_id: 4
     position_limit: 0.85
@@ -44,7 +44,7 @@ motors_params:
     gear_ratio: 9.0
   
   FR_KFE:
-    enabled: False
+    enabled: True
     name: FR_KFE
     node_id: 5
     position_limit: 3
@@ -76,7 +76,7 @@ motors_params:
     gear_ratio: 9.0
 
   HR_HAA:
-    enabled: True
+    enabled: False
     name: HR_HAA
     node_id: 9
     position_limit: 0.5

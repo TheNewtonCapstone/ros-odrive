@@ -1,3 +1,4 @@
+import math
 import rclpy
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.executors import ExternalShutdownException
@@ -24,6 +25,7 @@ class ODriveNode(Node):
         config_file_path = "config/newton.yaml"
         self.manager.load_configs_from_file(config_file_path)
 
+        self_state_timer = self.create_timer(0.01, self.publish_joint_states)
         # create subs
         self.position_sub = self.create_subscription(
             Float32MultiArray, "joints_cmd_positions", self.position_callback, 10
@@ -39,17 +41,57 @@ class ODriveNode(Node):
             Float32MultiArray, "joints_state_velocities", 10
         )
         # TODO: MAKE A VAR FOR THIS RATE
-        self_state_timer = self.create_timer(0.009, self.publish_joint_states)
 
         self.can_interface.start(self.manager.process_can_message)
         time.sleep(1)
         self.manager.calibrate_all()
+        # self.manager.get_device(3).request_heartbeat() 
+        # print(self.manager.get_device(2).request_heartbeat())
+        
+
         # self.manager.initialize_all()
         # self.manager.calibrate_one(0)
         # self.manager.calibrate_one(1)
         # self.manager.arm_all()
 
         # pass in a gait
+        
+
+    def position_callback(self, msg):
+
+        
+        
+        # # command for position command messages
+        pprint(f"received position command {msg.data}")
+        devices = self.manager.get_devices()
+        for i in range(11):
+            if i in devices:
+                self.manager.set_position(node_id=i, position=msg.data[i])
+        self.manager.set_all_positions(msg.data)
+
+    def publish_joint_states(self):
+        # publish joint states
+        if not self.manager.devices:
+            return
+        positions_msg = Float32MultiArray()
+        velocity_msg = Float32MultiArray()
+
+        positions_msg.data = self.manager.get_all_positions()
+        velocity_msg.data = self.manager.get_all_velocities()
+        pprint(positions_msg.data)
+
+        self.position_pub.publish(positions_msg)
+        self.velocity_pub.publish(velocity_msg)
+
+        amplitude = 0.5
+        frequency = 0.5
+        
+        # get time
+        t = time.time()
+        
+        base_position  = amplitude * math.sin(2 * math.pi * frequency * t)
+        hfe_offset = amplitude * -1.0 * base_position
+        kfe_offset = amplitude * 2.0 * base_position
         
         standing_gait = { 
             0: 0.0,
@@ -63,35 +105,18 @@ class ODriveNode(Node):
             8: 1,
             9: 0.0,
             10: -0.5,
-            11: 1}
+            11: 1
+            }
+        #make new dict with the added offsets
+        new_gait = {}
+        for key in standing_gait:
+            if key % 3 == 1:
+                new_gait[key] = standing_gait[key] + hfe_offset
+            elif key % 3 == 2:
+                new_gait[key] = standing_gait[key] + kfe_offset 
             
-            
-        
-
-        self.manager.set_all_positions(standing_gait)
-
-    def position_callback(self, msg):
-        # command for position command messages
-        pprint(f"received position command {msg.data}")
-        devices = self.manager.get_devices()
-        for i in range(11):
-            if i in devices:
-                self.manager.set_position(node_id=i, position=msg.data[i])
-        # self.manager.set_all_positions(msg.data)
-
-    def publish_joint_states(self):
-        # publish joint states
-        if not self.manager.devices:
-            return
-        positions_msg = Float32MultiArray()
-        velocity_msg = Float32MultiArray()
-
-        positions_msg.data = self.manager.get_all_positions()
-        velocity_msg.data = self.manager.get_all_velocities()
-        # pprint(f"publishing positions {positions_msg.data}")
-
-        self.position_pub.publish(positions_msg)
-        self.velocity_pub.publish(velocity_msg)
+        self.console.print(new_gait)
+        self.manager.set_all_positions(new_gait) 
 
     def shutdown(self):
         self.manager.estop_all()

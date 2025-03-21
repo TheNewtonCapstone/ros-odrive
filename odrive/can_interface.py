@@ -158,7 +158,7 @@ class CanInterface:
             response = future.wait(timeout)
             if response is None:
                 raise TimeoutException(
-                    f"Request with id {request_id} timed out after {timeout} seconds"
+                    f"Request with id {node_id} out after {timeout} seconds"
                 )
 
             return future.wait(timeout)
