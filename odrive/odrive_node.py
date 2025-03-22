@@ -97,40 +97,6 @@ class ODriveNode(Node):
         self.position_pub.publish(positions_msg)
         self.velocity_pub.publish(velocity_msg)
 
-        amplitude = 0.5
-        frequency = 0.5
-        
-        # get time
-        t = time.time()
-        
-        base_position  = amplitude * math.sin(2 * math.pi * frequency * t)
-        hfe_offset = amplitude * -1.0 * base_position
-        kfe_offset = amplitude * 2.0 * base_position
-        
-        standing_gait = { 
-            0: 0.0,
-            1:-0.5,
-            2: 1, 
-            3: 0.0,
-            4: -0.5 ,
-            5: 1,
-            6: 0.0,
-            7: - 0.5,
-            8: 1,
-            9: 0.0,
-            10: -0.5,
-            11: 1
-            }
-        #make new dict with the added offsets
-        new_gait = {}
-        for key in standing_gait:
-            if key % 3 == 1:
-                new_gait[key] = standing_gait[key] + hfe_offset
-            elif key % 3 == 2:
-                new_gait[key] = standing_gait[key] + kfe_offset 
-            
-        self.console.print(new_gait)
-        self.manager.set_all_positions(new_gait) 
 
     def shutdown(self):
         self.manager.estop_all()
