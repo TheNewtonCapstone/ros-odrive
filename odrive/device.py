@@ -363,7 +363,7 @@ class ODriveDevice:
         self,
         control_mode: ControlMode,
         input_mode: InputMode,
-    ) -> bool:
+    ):
         """
         Set the controller mode of the axis.
 

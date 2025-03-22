@@ -46,7 +46,7 @@ class ODriveNode(Node):
         self.can_interface.start(self.manager.process_can_message)
         time.sleep(1)
         # self.manager.get_device(8).request_heartbeat() 
-        self.manager.calibrate_one(9)
+        # self.manager.calibrate_one(9)
         self.manager.calibrate_all()
         # print(self.manager.get_device(2).request_heartbeat())
         

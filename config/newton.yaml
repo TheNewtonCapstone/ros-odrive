@@ -76,7 +76,7 @@ motors_params:
     gear_ratio: 9.0
 
   HR_HAA:
-    enabled: True
+    enabled: False
     name: HR_HAA
     node_id: 9
     position_limit: 0.5
@@ -96,5 +96,5 @@ motors_params:
     name: HR_KFE
     node_id: 11
     position_limit: 3
-    direction: -1 
+    direction: 1
     gear_ratio: 9.0
