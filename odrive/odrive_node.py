@@ -82,12 +82,9 @@ class ODriveNode(Node):
         for i in range(11):
             if i in devices:
                 self.manager.set_position(node_id=i, position=msg.data[i])
-        self.manager.set_all_positions(msg.data)
+        # self.manager.set_all_positions(msg.data)
 
     def publish_joint_states(self):
-        pprint(self.manager.get_torques())
-        return
-        # publish joint states
         if not self.manager.devices:
             return
         positions_msg = Float32MultiArray()
