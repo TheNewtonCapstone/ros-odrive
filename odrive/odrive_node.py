@@ -1,4 +1,6 @@
 import math
+import os
+from ament_index_python import get_package_share_directory
 import rclpy
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.executors import ExternalShutdownException
@@ -8,7 +10,6 @@ from .can_interface import CanInterface
 from .device_manager import ODriveManager
 from std_msgs.msg import Float32MultiArray
 from pprint import pprint
-from .device import AxisState, ControlMode, InputMode
 import time
 
 # import numpy as np
@@ -23,7 +24,9 @@ class ODriveNode(Node):
         self.console.print("Initializing ODrive CAN controller node")
         self.can_interface = CanInterface()
         self.manager = ODriveManager(self.can_interface)
-        config_file_path = "config/newton.yaml"
+
+        share_directory = get_package_share_directory("n_odrive")
+        config_file_path = os.path.join(share_directory, "config/newton.yaml")
         self.manager.load_configs_from_file(config_file_path)
 
         self_state_timer = self.create_timer(0.02, self.publish_joint_states)
@@ -31,7 +34,6 @@ class ODriveNode(Node):
         self.position_sub = self.create_subscription(
             Float32MultiArray, "joints_cmd_positions", self.position_callback, 10
         )
-
 
         self.position_pub = self.create_publisher(
             Float32MultiArray, "joints_state_positions", 10
@@ -46,14 +48,13 @@ class ODriveNode(Node):
 
         self.can_interface.start(self.manager.process_can_message)
         # time.sleep(3)
-        # self.manager.get_device(2).request_heartbeat() 
+        # self.manager.get_device(2).request_heartbeat()
         # self.manager.get_device(8).calibrate()
         # self.manager.get_device(8).set_controller_mode(control_mode=ControlMode.POSITION_CONTROL, input_mode=InputMode.TRAP_TRAJ)
         # self.manager.get_device(8).set_axis_state(AxisState.CLOSED_LOOP_CONTROL)
         # self.manager.calibrate_one(9)
         self.manager.calibrate_all()
         # print(self.manager.get_device(8).request_heartbeat())
-        
 
         # self.manager.initialize_all()
         # self.manager.calibrate_one(0)
@@ -62,8 +63,6 @@ class ODriveNode(Node):
 
         # pass in a gait
         # self.manager.set_all_positions(standing_gait)
-
-        
 
     def position_callback(self, msg):
         # # command for position command messages
@@ -82,27 +81,27 @@ class ODriveNode(Node):
 
         positions_msg.data = self.manager.get_all_positions()
         velocity_msg.data = self.manager.get_all_velocities()
-        
+
         self.position_pub.publish(positions_msg)
         self.velocity_pub.publish(velocity_msg)
 
         amplitude = 0.4
         frequency = 1
-        
-        standing_gait = { 
+
+        standing_gait = {
             0: 0.0,
-            1:-0.5,
-            2: 1, 
+            1: -0.5,
+            2: 1,
             3: 0.0,
-            4: -0.5 ,
+            4: -0.5,
             5: 1,
             6: 0.0,
-            7: - 0.5,
+            7: -0.5,
             8: 1,
             9: 0.0,
             10: -0.5,
-            11: 1
-            }
+            11: 1,
+        }
 
         new_gait = {
             0: 0.0,
@@ -116,24 +115,25 @@ class ODriveNode(Node):
             8: 0.0,
             9: 0.0,
             10: 0.0,
-            11: 0.0
+            11: 0.0,
         }
-        base_position = amplitude * math.sin(2 * math.pi * frequency * time.time()) 
-        hfe_offset = amplitude * base_position 
-        kfe_offset = base_position * - 2.0 * amplitude
-        
+        base_position = amplitude * math.sin(2 * math.pi * frequency * time.time())
+        hfe_offset = amplitude * base_position
+        kfe_offset = base_position * -2.0 * amplitude
+
         devices = self.manager.get_devices().items()
-        
+
         for i, device in devices:
             id = device.get_id()
             if id % 3 == 1:
                 new_gait[i] = standing_gait[i] + hfe_offset
             elif id % 3 == 2:
-                self.console.print(f"[bold red]HFE {id}[/bold red] offset: {hfe_offset}")
-                new_gait[i] = standing_gait[i] + kfe_offset 
-                
-        self.manager.set_all_positions(new_gait) 
-            
+                self.console.print(
+                    f"[bold red]HFE {id}[/bold red] offset: {hfe_offset}"
+                )
+                new_gait[i] = standing_gait[i] + kfe_offset
+
+        self.manager.set_all_positions(new_gait)
 
     def shutdown(self):
         self.manager.estop_all()
