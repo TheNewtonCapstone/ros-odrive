@@ -5,99 +5,8 @@ from typing import Callable, Optional, Tuple
 import time
 from .can_interface import Arbitration
 from rich.console import Console
-from .error import ODriveErrorCode, ODriveProcedureResult
+from .types import AxisState, ControlMode, InputMode, Heartbeat, ODriveErrorCode, ODriveProcedureResult, OdriveCANCommands
 from .exception import ODriveException, NotArmedException, CalibrationFailedException
-
-
-@unique
-class AxisState(IntEnum):
-    """
-    Enum class for the current statues of an ODrive axis, comes from the ODrive docs.
-    See https://docs.odriverobotics.com/v/latest/manual/can-protocol.html for more information.
-    """
-
-    UNDEFINED = 0
-    IDLE = 1
-    STARTUP_SEQUENCE = 2
-    FULL_CALIBRATION_SEQUENCE = 3
-    MOTOR_CALIBRATION = 4
-    ENCODER_INDEX_SEARCH = 6
-    ENCODER_OFFSET_CALIBRATION = 7
-    CLOSED_LOOP_CONTROL = 8
-    LOCKIN_SPIN = 9
-    ENCODER_DIR_FIND = 10
-    HOMING = 11
-    ENCODER_HALL_PHASE_receive_thread = 12
-    ENCODER_HALL_POLARITY_CALIBRATION = 13
-
-
-@unique
-class OdriveCANCommands(IntEnum):
-    """
-    Enum class that contains the ODrive CAN commands.
-    See https://docs.odriverobotics.com/v/latest/manual/can-protocol.html
-    for more information.
-    """
-
-    GET_VERSION = 0x00
-    GET_HEARTBEAT = 0x01
-    ESTOP = 0x02
-    GET_ERROR = 0x03
-    RXS_DO = 0x04
-    TXS_DO = 0x05
-    GET_ADDRESS = 0x06
-    SET_AXIS_STATE = 0x07
-    GET_ENCODER_ESTIMATES = 0x09
-
-    SET_CONTROLLER_MODE = 0x0B
-    SET_INPUT_POS = 0x0C
-    SET_INPUT_VEL = 0x0D
-    SET_INPUT_TORQUE = 0x0E
-    SET_LIMITS = 0x0F
-    SET_ABSOLUTE_POSITION = 0x19
-
-    SET_TRAJ_VEL_LIMIT = 0x11
-    SET_TRAJ_ACCEL_LIMIT = 0x12
-    SET_TRAJ_INERTIA = 0x13
-
-    GET_IQ = 0x14
-    GET_TEMPERATURE = 0x15
-
-    REBOOT = 0x16
-    GET_BUS_VOLTAGE = 0x17
-    CLEAR_ERRORS = 0x18
-    SET_POS_GAINS = 0x1A
-    SET_VEL_GAINS = 0x1B
-    GET_TORQUE = 0x1C
-    GET_POWERS = 0x1D
-    ENTER_DFU_MODE = 0x1F
-
-
-@unique
-class ControlMode(IntEnum):
-    """
-    Enum class that contains the control modes of the ODrive.
-    """
-
-    VOLTAGE_CONTROL = 0
-    TORQUE_CONTROL = 1
-    VELOCITY_CONTROL = 2
-    POSITION_CONTROL = 3
-
-
-@unique
-class InputMode(IntEnum):
-    """
-    Enum class that contains the input modes of the ODrive.
-    """
-
-    INACTIVE = 0
-    PASSTHROUGH = 1
-    VEL_RAMP = 2
-    POS_FILTER = 3
-    MIX_CHANNELS = 4
-    TRAP_TRAJ = 5
-
 
 class ODriveDevice:
     """
@@ -180,13 +89,14 @@ class ODriveDevice:
             bool: True if message was sent successfully
         """
 
-        err, state, procedure_result, traj_done = self.request_heartbeat()
-        if state != AxisState.CLOSED_LOOP_CONTROL:
+        # err, state, procedure_result, traj_done = self.request_heartbeat()
+        if self.axis_state != AxisState.CLOSED_LOOP_CONTROL:
+            hb = self.request_heartbeat()
             raise NotArmedException(
                 self.node_id,
                 message="Axis is not in closed loop control mode",
-                error_code=ODriveErrorCode(err),
-                procedure_result=ODriveProcedureResult(procedure_result),
+                error_code=ODriveErrorCode(hb.error),
+                procedure_result=ODriveProcedureResult(hb.result),
             )
 
         turns = self.rad_to_turns(pos)
@@ -301,7 +211,7 @@ class ODriveDevice:
         """
         return node_id << Arbitration.NODE_ID_SIZE | cmd_id
 
-    def set_axis_state(self, state: AxisState, timeout: float = 3.0) -> AxisState:
+    def set_axis_state(self, state: AxisState, timeout: float = 3.0)-> Heartbeat:
         """
         Set the state of the axis.
 
@@ -315,11 +225,9 @@ class ODriveDevice:
         cmd_id = OdriveCANCommands.SET_AXIS_STATE
 
         # get initial state
-        err, curr_state, procedure_result, traj_done = self.request_heartbeat(
-            timeout=0.1
-        )
+        heartbeat = self.request_heartbeat() 
 
-        if procedure_result == ODriveProcedureResult.CANCELLED:
+        if heartbeat.result == ODriveProcedureResult.CANCELLED:
             time.sleep(0.1)
             self.clear_errors()
 
@@ -330,7 +238,7 @@ class ODriveDevice:
         time.sleep(0.5)
         return self.poll_heartbeat(timeout=timeout)
 
-    def poll_heartbeat(self, timeout: float = 3.0) -> AxisState:
+    def poll_heartbeat(self, timeout: float = 3.0) -> Heartbeat:
         """Periodically poll the heartbeat to check if the axis is in the desired state and get to the desired state
         Args:
             end_state: The desired state of the axis
@@ -340,21 +248,25 @@ class ODriveDevice:
         """
         start_time = time.time()
         while time.time() - start_time < timeout:
-            err, curr_state, procedure_result, traj_done = self.request_heartbeat()
-            if err != 0:
-                raise ODriveException(
-                    self.node_id,
-                    ODriveErrorCode(err),
-                    ODriveProcedureResult(procedure_result),
-                    f"Error setting axis state for node {self.name}",
-                )
+            hb = self.request_heartbeat()
+            if hb.has_error():
+                self.clear_errors()
+                time.sleep(1.0)
+                hb = self.request_heartbeat()
+                if hb.has_error():
+                    raise ODriveException(
+                        self.node_id,
+                        ODriveErrorCode(hb.error),
+                        ODriveProcedureResult(hb.result),
+                        f"Error clearing errors for node {self.name}",
+                    )
 
-            if procedure_result == ODriveProcedureResult.BUSY:
+            if hb._result == ODriveProcedureResult.BUSY:
                 time.sleep(0.1)
                 continue
 
-            if procedure_result == ODriveProcedureResult.SUCCESS:
-                self._print_heartbeat(err, curr_state, procedure_result, traj_done)
+            if hb._result == ODriveProcedureResult.SUCCESS:
+                self.console.print(hb)
                 break
 
         return self.request_heartbeat()
@@ -383,16 +295,6 @@ class ODriveDevice:
 
         return self.poll_heartbeat()
 
-    def _print_heartbeat(
-        self,
-        error: int,
-        state: int,
-        procedure_result: int,
-        trajectory_done: int,
-    ):
-        self.console.print(
-            f"Node: {self.name} Error: {ODriveErrorCode(error).name}, State: {AxisState(state).name}, Procedure Result: {ODriveProcedureResult(procedure_result).name}, Trajectory Done: {trajectory_done}"
-        )
 
     def clear_errors(self, identify: bool = False) -> bool:
         """
@@ -413,16 +315,16 @@ class ODriveDevice:
             self.last_send_time = time.time()
 
         # make sure the error is cleared
-        err, procedure_result, res_state, _ = self.request_heartbeat()
-        if err != 0:
+        hb = self.request_heartbeat()
+        if hb.has_error():
             raise ODriveException(
                 self.node_id,
+                ODriveErrorCode(hb.error),
+                ODriveProcedureResult(hb.result),
                 f"Error clearing errors for node {self.name}",
-                ODriveErrorCode(err),
-                ODriveProcedureResult(procedure_result),
             )
 
-        if res_state != AxisState.IDLE:
+        if hb.is_idle():
             self.set_axis_state(AxisState.IDLE)
 
         return success
@@ -629,7 +531,7 @@ class ODriveDevice:
 
         return success
 
-    def request_heartbeat(self, timeout: float = 0.1) -> Tuple[int, int, int, int]:
+    def request_heartbeat(self, timeout: float = 3.0) -> Heartbeat:
         """
         Request a heartbeat and wait for the response
 
@@ -653,7 +555,7 @@ class ODriveDevice:
             data[:7],
         )
 
-        return error, state, procedure_result, trajectory_done
+        return Heartbeat(error=error, state=state, result=procedure_result, done=trajectory_done)
 
     def calibrate(self, timeout: float = 20.0):
         """
@@ -670,6 +572,28 @@ class ODriveDevice:
 
         return self.request_heartbeat(timeout=timeout)
 
+    def arm(self, timeout: float = 3.0)-> Heartbeat:
+        self.set_axis_state(AxisState.CLOSED_LOOP_CONTROL, timeout=timeout)
+        time.sleep(1.0)
+        hb = self.request_heartbeat(timeout=timeout)
+        if hb.state == AxisState.CLOSED_LOOP_CONTROL:
+            self.axis_state = AxisState.CLOSED_LOOP_CONTROL
+
+        return hb
+
+    def disarm(self, timeout: float = 1.0)-> Heartbeat:
+        self.set_axis_state(AxisState.IDLE, timeout=timeout)
+        hb = self.request_heartbeat(timeout=timeout)
+        if hb.state == AxisState.IDLE:
+            self.axis_state = AxisState.IDLE
+        return hb
+   
+    def is_armed(self)->bool:
+        hb = self.request_heartbeat()
+        if hb.state == AxisState.CLOSED_LOOP_CONTROL:
+            return True
+        return False
+            
     def get_name(self):
         return self.name
 
@@ -754,3 +678,8 @@ class ODriveDevice:
     def clamp_to_limits(self, pos: float) -> float:
         """Clamp the position to the limits"""
         return max(self.min_position, min(self.max_position, pos))
+    def get_direction(self):
+        return self.direction
+
+    def get_id(self):
+       return self.node_id

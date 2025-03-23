@@ -85,6 +85,8 @@ class CanInterface:
             self.receive_thread = threading.Thread(target=self._receive_loop)
             self.receive_thread.daemon = True
             self.receive_thread.start()
+            # self.bus.flush_tx_buffer()
+            # self.bus.flush_rx_buffer()
 
             return True
 

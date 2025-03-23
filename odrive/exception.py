@@ -1,6 +1,6 @@
 import logging
 from enum import IntEnum
-from .error import ODriveErrorCode, ODriveProcedureResult
+from .types import ODriveErrorCode, ODriveProcedureResult
 from typing import Optional
 import logging
 
@@ -47,7 +47,7 @@ class ODriveException(Exception):
             error_msg += f" Error code: {error_code}: {error_code.name}"
         if procedure_result is not None:
             error_msg += (
-                f" Procedure result: {procedure_result}: {procedure_result.name}"
+                f" Procedure result: {procedure_result}: {procedure_result}"
             )
         super().__init__(error_msg)
 
