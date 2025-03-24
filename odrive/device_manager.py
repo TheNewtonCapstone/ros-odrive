@@ -9,7 +9,7 @@ from .exception import (
     DeviceNotFoundException,
     NotArmedException,
 )
-from .types import ODriveErrorCode, ODriveProcedureResult
+from .types import Heartbeat, ODriveErrorCode, ODriveProcedureResult
 import yaml
 import os
 import rclpy
@@ -23,12 +23,12 @@ class ODriveManager:
     Manager class for handling multiple ODrive devices on a CAN bus
     """
 
-    def __init__(self, can_interface):
+    def __init__(self, can_interface: CanInterface):
         """
         Args:
             can_interface: CAN interface for communication
         """
-        self.can_interface = can_interface
+        self.can_interface: CanInterface = can_interface
         self.devices: Dict[int, ODriveDevice] = {}  # node_id -> device
         self.num_devices = 0
         self.running = False
@@ -538,7 +538,7 @@ class ODriveManager:
         return torques
 
     # funtion to calibrate some of the motors
-    def calibrate_group(self, node_ids: List[int], timeout: int = 20) -> None:
+    def calibrate_group(self, node_ids: List[int], timeout: int = 60) -> None:
         """Calibrate a list of motors at the same time"""
         # clear errors
         for node_id in node_ids:
@@ -552,10 +552,10 @@ class ODriveManager:
 
         # poll all devices until they are a done or timeout
         start_time = time.time()
-        results = {}
         pendings_nodes = set(node_ids)
+        errored_nodes: Dict[int, Heartbeat] = {}
 
-        while pendings_nodes and (time.time() - start_time) < timeout:
+        while len(pendings_nodes) > 0 and (time.time() - start_time) < timeout:
             nodes_to_checks = pendings_nodes.copy()  # avoid mutation while iterating
 
             for node_id in nodes_to_checks:
@@ -563,30 +563,25 @@ class ODriveManager:
 
                 if hb.result == ODriveProcedureResult.BUSY:
                     console.print(f"[blue]Calibrating motor {node_id}...[/blue]")
-                else:
-                    console.print(
-                        f"[red]Calibration of motor {node_id} is {hb.result} [/red]"
-                    )
-                    results[node_id] = (hb.error, hb.state, hb.result)
-                    pendings_nodes.remove(node_id)
-
-                if hb.result == ODriveProcedureResult.SUCCESS:
+                elif hb.result == ODriveProcedureResult.SUCCESS:
                     console.print(
                         f"[green]Calibration of motor {node_id} completed[/green]"
                     )
+                    pendings_nodes.remove(node_id)
+                else:
+                    console.print(
+                        f"[red]Calibration of motor {node_id} is {hb.result}[/red]"
+                    )
+                    pendings_nodes.remove(node_id)
+                    errored_nodes[node_id] = hb
 
             time.sleep(0.2)
 
-            # print the timeouts
+        # print the timeouts
+        for node_id, hb in errored_nodes.items():
+            console.print(f"[red]Calibration of motor {node_id} timed out, {hb}[/red]")
 
-        for node_id in pendings_nodes:
-            err, state, procedure_res, _ = self.devices[node_id].request_heartbeat()
-            results[node_id] = (err, state, procedure_res)
+        if len(errored_nodes) > 0:
+            self.stop()
 
-            raise CalibrationFailedException(
-                node_id=node_id,
-                message=f"Calibration of motor {node_id} timed out",
-                error_code=err,
-                procedure_result=procedure_res,
-            )
         return

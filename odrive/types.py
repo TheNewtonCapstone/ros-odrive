@@ -1,5 +1,4 @@
 from enum import IntEnum, unique
-from typing import Callable, Optional, Tuple
 
 
 @unique
@@ -22,6 +21,12 @@ class AxisState(IntEnum):
     HOMING = 11
     ENCODER_HALL_PHASE_receive_thread = 12
     ENCODER_HALL_POLARITY_CALIBRATION = 13
+
+    def __str__(self):
+        return self.name
+
+    def __repr__(self):
+        return self.name
 
 
 @unique
@@ -65,6 +70,12 @@ class OdriveCANCommands(IntEnum):
     GET_POWERS = 0x1D
     ENTER_DFU_MODE = 0x1F
 
+    def __str__(self):
+        return self.name
+
+    def __repr__(self):
+        return self.name
+
 
 @unique
 class ControlMode(IntEnum):
@@ -76,6 +87,12 @@ class ControlMode(IntEnum):
     TORQUE_CONTROL = 1
     VELOCITY_CONTROL = 2
     POSITION_CONTROL = 3
+
+    def __str__(self):
+        return self.name
+
+    def __repr__(self):
+        return self.name
 
 
 @unique
@@ -106,6 +123,12 @@ class ODriveErrorCode(IntEnum):
     THERMISTOR_DISCONNECTED = 268435456
     CALIBRATION_ERROR = 1073741824
 
+    def __str__(self):
+        return self.name
+
+    def __repr__(self):
+        return self.name
+
 
 @unique
 class ODriveProcedureResult(IntEnum):
@@ -134,6 +157,12 @@ class ODriveProcedureResult(IntEnum):
 
     Try changing the calibration parameters."""
 
+    def __str__(self):
+        return self.name
+
+    def __repr__(self):
+        return self.name
+
 
 @unique
 class InputMode(IntEnum):
@@ -147,6 +176,12 @@ class InputMode(IntEnum):
     POS_FILTER = 3
     MIX_CHANNELS = 4
     TRAP_TRAJ = 5
+
+    def __str__(self):
+        return self.name
+
+    def __repr__(self):
+        return self.name
 
 
 class Heartbeat:
@@ -195,4 +230,4 @@ class Heartbeat:
         )
 
     def __str__(self):
-        return f"error:{self.error.name},state:{self.state.name},result:{self.result.name},done:{self.done}"
+        return f"Error:{self.error.name}, State:{self.state.name}, Result:{self.result.name}, Done:{self.done}"

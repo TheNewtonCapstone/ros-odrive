@@ -74,7 +74,7 @@ class CanInterface:
             return False
 
         try:
-            self.bus: can.Bus = can.ThreadSafeBus(
+            self.bus: can.Bus = can.Bus(
                 channel=self.interface,
                 bustype="socketcan",
                 bitrate=self.bitrate,
