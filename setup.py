@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = 'odrive'
+package_name = 'n_odrive'
 
 setup(
     name=package_name,
@@ -10,14 +10,16 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        ('share/' + package_name + '/config', ['config/newton.yaml'])
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='newton',
-    maintainer_email='shamiivan@gmail.com',
-    description='TODO: Package description',
-    license='TODO: License declaration',
-    tests_require=['pytest'],
+    maintainer='TheNewtonCapstone',
+    maintainer_email='the.newton.capstone@gmail.com',
+    author='Shami Ivan',
+    author_email='shamiivan@gmail.com',
+    description='ROS2 package for interfacing with ODrive motor controllers',
+    license='GPLv3.0',
     entry_points={
         'console_scripts': [
             'odrive_node = odrive.odrive_node:main'

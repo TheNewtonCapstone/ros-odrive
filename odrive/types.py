@@ -1,5 +1,6 @@
 from enum import IntEnum, unique
-from typing import Callable, Optional, Tuple    
+from typing import Callable, Optional, Tuple
+
 
 @unique
 class AxisState(IntEnum):
@@ -75,6 +76,8 @@ class ControlMode(IntEnum):
     TORQUE_CONTROL = 1
     VELOCITY_CONTROL = 2
     POSITION_CONTROL = 3
+
+
 @unique
 class ODriveErrorCode(IntEnum):
     # see https://docs.odriverobotics.com/v/latest/fibre_types/com_odriverobotics_ODrive.html#ODrive.Error for more details
@@ -155,35 +158,41 @@ class Heartbeat:
         done,
     ):
 
-        self.error=ODriveErrorCode(error)
-        self.state=AxisState(state)
-        self.result=ODriveProcedureResult(result)
-        self.done=done
-        
-       
+        self.error = ODriveErrorCode(error)
+        self.state = AxisState(state)
+        self.result = ODriveProcedureResult(result)
+        self.done = done
+
     @property
     def _error(self):
         return self.error
-    
+
     @property
     def _state_enum(self):
         return self.state
-    
+
     @property
     def _result(self):
         return self.result
-    
+
     @property
     def _done(self):
         return self.done
-    
+
     def is_armed(self):
-        return self.state==AxisState.CLOSED_LOOP_CONTROL
-    
+        return self.state == AxisState.CLOSED_LOOP_CONTROL
+
     def is_idle(self):
-        return self.state==AxisState.IDLE
-    
+        return self.state == AxisState.IDLE
+
     def has_error(self):
-        return self.error!=ODriveErrorCode.NO_ERROR
+        return self.error != ODriveErrorCode.NO_ERROR
+
+    def is_perfect(self):
+        return (
+            self.error == ODriveErrorCode.NO_ERROR
+            and self.result == ODriveProcedureResult.SUCCESS
+        )
+
     def __str__(self):
         return f"error:{self.error.name},state:{self.state.name},result:{self.result.name},done:{self.done}"

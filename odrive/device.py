@@ -5,8 +5,17 @@ from typing import Callable, Optional, Tuple
 import time
 from .can_interface import Arbitration
 from rich.console import Console
-from .types import AxisState, ControlMode, InputMode, Heartbeat, ODriveErrorCode, ODriveProcedureResult, OdriveCANCommands
+from .types import (
+    AxisState,
+    ControlMode,
+    InputMode,
+    Heartbeat,
+    ODriveErrorCode,
+    ODriveProcedureResult,
+    OdriveCANCommands,
+)
 from .exception import ODriveException, NotArmedException, CalibrationFailedException
+
 
 class ODriveDevice:
     """
@@ -89,9 +98,8 @@ class ODriveDevice:
             bool: True if message was sent successfully
         """
 
-        # err, state, procedure_result, traj_done = self.request_heartbeat()
-        if self.axis_state != AxisState.CLOSED_LOOP_CONTROL:
-            hb = self.request_heartbeat()
+        hb = self.request_heartbeat()
+        if hb.state != AxisState.CLOSED_LOOP_CONTROL:
             raise NotArmedException(
                 self.node_id,
                 message="Axis is not in closed loop control mode",
@@ -100,7 +108,7 @@ class ODriveDevice:
             )
 
         turns = self.rad_to_turns(pos)
-        self.console.print(f"Setting position to {pos} turns: {turns}")
+        # self.console.print(f"Setting position to {pos} turns: {turns}")
 
         cmd_id = OdriveCANCommands.SET_INPUT_POS
         arb_id = self.make_arbitration_id(self.node_id, cmd_id)
@@ -114,7 +122,7 @@ class ODriveDevice:
         # torque_ff_int = max(min(torque_ff_int, 32767), -32768)
 
         # f is for float, h is for int16
-        data = struct.pack("<fhh", turns, 0, 0)
+        data = struct.pack("<fhh", turns, 2, 0)
         success = self.send_can_frame(arb_id, data)
 
         if success:
@@ -211,7 +219,7 @@ class ODriveDevice:
         """
         return node_id << Arbitration.NODE_ID_SIZE | cmd_id
 
-    def set_axis_state(self, state: AxisState, timeout: float = 3.0)-> Heartbeat:
+    def set_axis_state(self, state: AxisState, timeout: float = 3.0) -> Heartbeat:
         """
         Set the state of the axis.
 
@@ -225,7 +233,7 @@ class ODriveDevice:
         cmd_id = OdriveCANCommands.SET_AXIS_STATE
 
         # get initial state
-        heartbeat = self.request_heartbeat() 
+        heartbeat = self.request_heartbeat()
 
         if heartbeat.result == ODriveProcedureResult.CANCELLED:
             time.sleep(0.1)
@@ -289,12 +297,14 @@ class ODriveDevice:
         cmd_id = OdriveCANCommands.SET_CONTROLLER_MODE
         arb_id = self.make_arbitration_id(self.node_id, cmd_id)
         # TODO: ADD SAFETY CHECKS CONTROL MODE SHOULD BE IDLE
-        
+
         data = struct.pack("<II", int(control_mode), int(input_mode))
         success = self.send_can_frame(arb_id, data)
 
-        return self.poll_heartbeat()
+        if success:
+            self.last_send_time = time.time()
 
+        return self.poll_heartbeat()
 
     def clear_errors(self, identify: bool = False) -> bool:
         """
@@ -353,6 +363,7 @@ class ODriveDevice:
             error, state, procedure_result, trajectory_done = struct.unpack(
                 "<IBBB", data[:7]
             )
+
             self.axis_error = error
             self.axis_state = (
                 AxisState(state)
@@ -378,7 +389,7 @@ class ODriveDevice:
 
     def get_torque(self):
         return self.torque_estimate
-    
+
     def process_can_message(self, cmd_id: int, data: bytes) -> None:
         """
             Process CAN message from the ODrive
@@ -555,7 +566,9 @@ class ODriveDevice:
             data[:7],
         )
 
-        return Heartbeat(error=error, state=state, result=procedure_result, done=trajectory_done)
+        return Heartbeat(
+            error=error, state=state, result=procedure_result, done=trajectory_done
+        )
 
     def calibrate(self, timeout: float = 20.0):
         """
@@ -572,7 +585,7 @@ class ODriveDevice:
 
         return self.request_heartbeat(timeout=timeout)
 
-    def arm(self, timeout: float = 3.0)-> Heartbeat:
+    def arm(self, timeout: float = 3.0) -> Heartbeat:
         self.set_axis_state(AxisState.CLOSED_LOOP_CONTROL, timeout=timeout)
         time.sleep(1.0)
         hb = self.request_heartbeat(timeout=timeout)
@@ -581,19 +594,19 @@ class ODriveDevice:
 
         return hb
 
-    def disarm(self, timeout: float = 1.0)-> Heartbeat:
+    def disarm(self, timeout: float = 1.0) -> Heartbeat:
         self.set_axis_state(AxisState.IDLE, timeout=timeout)
         hb = self.request_heartbeat(timeout=timeout)
         if hb.state == AxisState.IDLE:
             self.axis_state = AxisState.IDLE
         return hb
-   
-    def is_armed(self)->bool:
+
+    def is_armed(self) -> bool:
         hb = self.request_heartbeat()
         if hb.state == AxisState.CLOSED_LOOP_CONTROL:
             return True
         return False
-            
+
     def get_name(self):
         return self.name
 
@@ -660,16 +673,14 @@ class ODriveDevice:
 
     def rad_to_turns(self, rad: float) -> float:
         """Convert radians to turns"""
-        normalized_rad = self.normalize_angle(rad)
-        direction_rad = normalized_rad * self.direction
-        offset_rad = self.offset * self.direction
-        self.console.print(f"Normalized rad: {normalized_rad}, direction rad: {direction_rad}, offset rad: {offset_rad}")
         rad_with_direction = self.normalize_angle(rad) * self.direction
         return (rad_with_direction * self.RAD_TO_TURNS) + self.offset
 
     def turns_to_rad(self, turns: float) -> float:
         """Convert turns to radians"""
-        return self.normalize_angle((turns - self.offset) * self.TURNS_TO_RAD * self.direction)
+        return self.normalize_angle(
+            (turns - self.offset) * self.TURNS_TO_RAD * self.direction
+        )
 
     def is_within_limits(self, pos: float) -> bool:
         """Check if the position (rad) is within the limits"""
@@ -678,8 +689,9 @@ class ODriveDevice:
     def clamp_to_limits(self, pos: float) -> float:
         """Clamp the position to the limits"""
         return max(self.min_position, min(self.max_position, pos))
+
     def get_direction(self):
         return self.direction
 
     def get_id(self):
-       return self.node_id
+        return self.node_id
