@@ -575,7 +575,7 @@ class ODriveManager:
                     pendings_nodes.remove(node_id)
                     errored_nodes[node_id] = hb
 
-            time.sleep(0.2)
+            time.sleep(0.5)
 
         # print the timeouts
         for node_id, hb in errored_nodes.items():

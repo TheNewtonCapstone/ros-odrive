@@ -3,7 +3,7 @@ robot_name: newton
 motors_params:
   # HAA : Hip Abduction/Adduction
   FL_HAA:
-    enabled: True ## enabled on the can bus
+    enabled: False ## enabled on the can bus
     name: FL_HAA
     node_id: 0
     position_limit: 0.5
@@ -27,7 +27,7 @@ motors_params:
     gear_ratio: 9.0
 
   FR_HAA:
-    enabled: True
+    enabled: False
     name: FR_HAA
     node_id: 3
     position_limit: 0.5
@@ -51,7 +51,7 @@ motors_params:
     gear_ratio: 9.0
 
   HL_HAA:
-    enabled: True
+    enabled: False
     name: HL_HAA
     node_id: 6
     position_limit: 0.5
