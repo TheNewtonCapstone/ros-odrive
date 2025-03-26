@@ -161,7 +161,11 @@ class ODriveManager:
         return self._devices_calibrated
 
     def request(
-        self, node_id: int, cmd_id: int, data: bytes, timeout: float = 2.0
+        self,
+        node_id: int,
+        cmd_id: int,
+        data: bytes,
+        timeout: float = 2.0,
     ) -> bool:
         """
         Send a request message to a device
@@ -174,7 +178,7 @@ class ODriveManager:
         Returns:
             bool: True if successful, False otherwise
         """
-        return self.can_interface.request(node_id, cmd_id, data)
+        return self.can_interface.request(node_id, cmd_id, data, timeout)
 
     def send_can_frame(self, arbitration_id: int, data: bytes) -> bool:
         """

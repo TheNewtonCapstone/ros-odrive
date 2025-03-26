@@ -46,9 +46,7 @@ class ODriveException(Exception):
         if error_code is not None:
             error_msg += f" Error code: {error_code}: {error_code.name}"
         if procedure_result is not None:
-            error_msg += (
-                f" Procedure result: {procedure_result}: {procedure_result}"
-            )
+            error_msg += f" Procedure result: {procedure_result}: {procedure_result}"
         super().__init__(error_msg)
 
     def _log_exceptions(self):

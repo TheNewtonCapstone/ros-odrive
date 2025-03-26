@@ -219,7 +219,7 @@ class ODriveDevice:
         """
         return node_id << Arbitration.NODE_ID_SIZE | cmd_id
 
-    def set_axis_state(self, state: AxisState, timeout: float = 3.0) -> Heartbeat:
+    def set_axis_state(self, state: AxisState, timeout: float = 4.0) -> Heartbeat:
         """
         Set the state of the axis.
 
@@ -256,7 +256,7 @@ class ODriveDevice:
         """
         start_time = time.time()
         while time.time() - start_time < timeout:
-            hb = self.request_heartbeat()
+            hb = self.request_heartbeat(timeout=timeout)
             if hb.has_error():
                 self.clear_errors()
                 time.sleep(1.0)
@@ -324,8 +324,8 @@ class ODriveDevice:
         if success:
             self.last_send_time = time.time()
 
-        # make sure the error is cleared
-        hb = self.request_heartbeat()
+        # make sure the error is cleared, 5s because clearing errors was specifally finicky
+        hb = self.request_heartbeat(timeout=5.0)
         if hb.has_error():
             raise ODriveException(
                 self.node_id,
@@ -560,6 +560,13 @@ class ODriveDevice:
             b"",
             timeout=timeout,
         )
+        if len(data) < 7:
+            return Heartbeat(
+                error=ODriveErrorCode.NO_ERROR,
+                state=AxisState.IDLE,
+                result=ODriveProcedureResult.BUSY,
+                done=0,
+            )
 
         error, state, procedure_result, trajectory_done = struct.unpack(
             "<IBBB",
@@ -567,7 +574,10 @@ class ODriveDevice:
         )
 
         return Heartbeat(
-            error=error, state=state, result=procedure_result, done=trajectory_done
+            error=error,
+            state=state,
+            result=procedure_result,
+            done=trajectory_done,
         )
 
     def calibrate(self, timeout: float = 20.0):
@@ -585,16 +595,16 @@ class ODriveDevice:
 
         return self.request_heartbeat(timeout=timeout)
 
-    def arm(self, timeout: float = 3.0) -> Heartbeat:
+    def arm(self, timeout: float = 4.0) -> Heartbeat:
         self.set_axis_state(AxisState.CLOSED_LOOP_CONTROL, timeout=timeout)
-        time.sleep(1.0)
+        time.sleep(1.5)
         hb = self.request_heartbeat(timeout=timeout)
         if hb.state == AxisState.CLOSED_LOOP_CONTROL:
             self.axis_state = AxisState.CLOSED_LOOP_CONTROL
 
         return hb
 
-    def disarm(self, timeout: float = 1.0) -> Heartbeat:
+    def disarm(self, timeout: float = 3.0) -> Heartbeat:
         self.set_axis_state(AxisState.IDLE, timeout=timeout)
         hb = self.request_heartbeat(timeout=timeout)
         if hb.state == AxisState.IDLE:
