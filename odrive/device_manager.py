@@ -49,6 +49,7 @@ class ODriveManager:
                     f"Device with node_id {node_id} in config file not found"
                 )
         self.clear_errors()
+        self.set_controller_mode_all(ControlMode.POSITION_CONTROL, InputMode.POS_FILTER)
         # set control mode first to avoid arming and disarming 
 
         not_calibrated = self.get_calibrated_devices()
@@ -61,10 +62,8 @@ class ODriveManager:
         self.calibrate_group(kfe_ids)
         console.print(f"Calibrating HFE: {hfe_ids}")
         self.calibrate_group(hfe_ids)
-        self.set_controller_mode_all(ControlMode.POSITION_CONTROL, InputMode.POS_FILTER)
         self.arm_all() 
-        self.set_init_positions_all()
-
+        # self.set_init_positions_all()
             
         self._devices_calibrated = True
         
@@ -159,7 +158,6 @@ class ODriveManager:
         # loop through devices and get the positions
         for i, device in self.devices.items():
             positions.append(device.get_position())
-            
         return positions
 
     def get_all_velocities(self) -> List[float]:
@@ -167,13 +165,9 @@ class ODriveManager:
         Get velocities of all devices
         """
         velocities = []
-
-        for i in range(12):
-            if i in self.devices:
-                velocities.append(self.devices[i].get_velocity())
-            else:
-                velocities.append(0.0)
-
+        # loop through devices and get the velocities
+        for i, device in self.devices.items():
+            velocities.append(device.get_velocity())
         return velocities
 
     def get_device(self, node_id: int) -> Optional[ODriveDevice]:
@@ -324,10 +318,14 @@ class ODriveManager:
         kfe_devices = [self.get_device(x) for x in available_devices if x % 2 != 0]
         
         for device in kfe_devices:
+            console.print(f"Setting initial position for device {device.node_id}")
             self.set_position(device.node_id, device.starting_position)
         time.sleep(1)
+        
         for device in hfe_devices:
+            console.print(f"Setting initial position for device {device.node_id}")
             self.set_position(device.node_id, device.starting_position)
+        time.sleep(1)
         
         
         
@@ -671,8 +669,8 @@ class ODriveManager:
                 console.print(f"Device {node_id} heartbeat not calibrate: {hb}")
             else:
                 device.is_calibrated = True
-                
                 console.print(f"Device {node_id} heartbeat calibrated: {hb}")
+        
         return not_calibrated
            
          
