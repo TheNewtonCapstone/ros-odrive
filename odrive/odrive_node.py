@@ -70,7 +70,7 @@ class ODriveNode(Node):
 
     def position_callback(self, msg):
         # # command for position command messages
-        # pprint(f"received position command {msg.data}")
+        pprint(f"received position command {msg.data}")
         devices = self.manager.get_devices()
         size = msg.layout.dim[0].size
         # added this as a hack to get the position of the joints as quick. a better way would be to create 
@@ -90,7 +90,7 @@ class ODriveNode(Node):
         positions_msg = Float32MultiArray()
         velocity_msg = Float32MultiArray()
 
-        positions_msg.data = self.manager.get_all_positions()
+        positions_msg.data = self.manager.get_position_all()
         velocity_msg.data = self.manager.get_all_velocities()
 
         self.position_pub.publish(positions_msg)
