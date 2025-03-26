@@ -48,34 +48,28 @@ class ODriveManager:
                     f"Device with node_id {node_id} in config file not found"
                 )
         self.clear_errors()
+        # set control mode first to avoid arming and disarming 
+        self.set_controller_mode_all(ControlMode.POSITION_CONTROL, InputMode.POS_FILTER)
+
         not_calibrated = self.get_calibrated_devices()
-        hfe_ids = [x for x in not_calibrated if x % 3 == 1]
-        kfe_ids = [x for x in not_calibrated if x % 3 == 2]
+
+        # calibrate per group
+        hfe_ids = [x for x in not_calibrated if x % 2 == 0]
+        kfe_ids = [x for x in not_calibrated if x % 2 != 0]
 
         console.print(f"Calibrating KFE: {kfe_ids}")
         self.calibrate_group(kfe_ids)
         console.print(f"Calibrating HFE: {hfe_ids}")
         self.calibrate_group(hfe_ids)
+        self.arm_all() 
 
-        self.set_controller_mode(ControlMode.POSITION_CONTROL, InputMode.POS_FILTER)
-        
-        # self.calibrate_all()
-        # go to starting position
         for node_id, device in self.devices.items():
-            device.set_position(device.starting_position)
+            self.set_position(node_id, device.starting_position)
+            # device.set_position(device.starting_position)
             console.print(f"Node ID: {node_id} at position {device.starting_position} current position: {device.get_position()}")
             time.sleep(0.5)
             
         self._devices_calibrated = True
-        
-        
-        
-        
-
-
-    
-
-        
         
 
     def load_configs_from_file(self, config_file_path: str, discovered_nodes: List[int]):
@@ -349,12 +343,15 @@ class ODriveManager:
     def arm_all(self) -> None:
         # set control mode
         for node_id, device in self.devices.items():
-            if not device.set_axis_state(AxisState.CLOSED_LOOP_CONTROL):
-                console.print(
-                    f"[red]Failed to enter closed loop control for device {node_id}[/red]"
-                )
-                time.sleep(0.5)
+            if device.is_calibrated:
+                device.arm()
                 continue
+
+            if not device.is_calibrated:
+                console.print(f"[red]Device with node_id {node_id} not calibrated[/red]")
+                device.calibrate()
+                device.set_controller_mode(ControlMode.POSITION_CONTROL, InputMode.POS_FILTER)
+                device.arm()
 
     def init_device(
         self,
@@ -458,8 +455,19 @@ class ODriveManager:
         if not device:
             console.print(f"[red]Device with node_id {node_id} not found[/red]")
             return
+        # check if device is armed
+        if device.is_calibrated and device.is_armed and device.control_mode == ControlMode.POSITION_CONTROL:
+            device.set_position(position)
+            return 
+        
+        if not device.is_calibrated:
+            console.print(f"[red]Device with node_id {node_id} not calibrated[/red]")
+            device.calibrate()
+            device.set_controller_mode(ControlMode.POSITION_CONTROL, InputMode.POS_FILTER)
+            device.arm()
+            device.set_position(position)
+            return 
 
-        device.set_position(position)
 
     def calibrate_all(self) -> None:
         """
@@ -622,7 +630,11 @@ class ODriveManager:
 
         if len(errored_nodes) > 0:
             self.stop()
-
+        # update the calibration status
+        for node_id in node_ids:
+            if node_id not in errored_nodes:
+                self.devices[node_id].is_calibrated = True
+                
         return
     
     def clear_errors(self) -> None:
@@ -642,14 +654,25 @@ class ODriveManager:
             hb = device.arm()
             if hb.not_calibrated():
                 not_calibrated.append(node_id)
-            console.print(f"Device {node_id} heartbeat: {hb}")
+                console.print(f"Device {node_id} heartbeat not calibrate: {hb}")
+            else:
+                device.is_calibrated = True
+                
+                console.print(f"Device {node_id} heartbeat calibrated: {hb}")
         return not_calibrated
            
          
         
-    def set_controller_mode(self, control_mode: ControlMode, input_mode: InputMode):
+    def set_controller_mode_all(self, control_mode: ControlMode, input_mode: InputMode):
         for node_id, device in self.devices.items():
             console.print(f"Setting controller mode {control_mode.name} for device {node_id}")
             device.disarm()
             device.set_controller_mode(control_mode, input_mode) 
-            device.arm()
+            
+
+    def set_controller_mode_group(self, node_ids: List[int], control_mode: ControlMode, input_mode: InputMode):
+        for node_id in node_ids:
+            device = self.devices[node_id]
+            console.print(f"Setting controller mode {control_mode.name} for device {node_id}")
+            device.disarm()
+            device.set_controller_mode(control_mode, input_mode) 

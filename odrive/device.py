@@ -63,8 +63,10 @@ class ODriveDevice:
         self.torque_estimate = 0.0
         self.axis_error = 0
         self.axis_state = AxisState.UNDEFINED
-        self.procedure_result = 0
-        self.trajectory_done = False
+        self.input_mode = InputMode.UNDEFINED
+        self.control_mode = ControlMode.UNDEFINED
+        self.is_calibrated = False        
+        self._is_armed = False
 
         # Message handlers
         self.message_handlers = {
@@ -102,12 +104,14 @@ class ODriveDevice:
 
         hb = self.request_heartbeat()
         if hb.state != AxisState.CLOSED_LOOP_CONTROL:
-            raise NotArmedException(
-                self.node_id,
-                message="Axis is not in closed loop control mode",
-                error_code=ODriveErrorCode(hb.error),
-                procedure_result=ODriveProcedureResult(hb.result),
-            )
+            hb = self.arm()
+            if hb.state != AxisState.CLOSED_LOOP_CONTROL:
+                raise NotArmedException(
+                    self.node_id,
+                    message="Axis is not in closed loop control mode",
+                    error_code=ODriveErrorCode(hb.error),
+                    procedure_result=ODriveProcedureResult(hb.result),
+                )
 
         turns = self.rad_to_turns(pos)
         # self.console.print(f"Setting position to {pos} turns: {turns}")
@@ -305,8 +309,20 @@ class ODriveDevice:
 
         if success:
             self.last_send_time = time.time()
+        hb = self.poll_heartbeat()
+        if hb.has_error():
+            raise ODriveException(
+                self.node_id,
+                ODriveErrorCode(hb.error),
+                ODriveProcedureResult(hb.result),
+                f"Error setting controller mode for node {self.name}",
+            )
+        
+        if hb.result == ODriveProcedureResult.SUCCESS:
+            self.control_mode = control_mode
+            self.input_mode = input
 
-        return self.poll_heartbeat()
+        return hb
 
     def clear_errors(self, identify: bool = False) -> bool:
         """
@@ -594,8 +610,10 @@ class ODriveDevice:
         """
         # Start calibration
         self.set_axis_state(AxisState.FULL_CALIBRATION_SEQUENCE, timeout=timeout)
-
-        return self.request_heartbeat(timeout=timeout)
+        hb = self.request_heartbeat(timeout=3.0)
+        if hb.result == ODriveProcedureResult.SUCCESS:
+            self.is_calibrated = True
+        return hb
 
     def arm(self, timeout: float = 4.0) -> Heartbeat:
         self.set_axis_state(AxisState.CLOSED_LOOP_CONTROL, timeout=timeout)
@@ -614,10 +632,7 @@ class ODriveDevice:
         return hb
 
     def is_armed(self) -> bool:
-        hb = self.request_heartbeat()
-        if hb.state == AxisState.CLOSED_LOOP_CONTROL:
-            return True
-        return False
+        return self.axis_state == AxisState.CLOSED_LOOP_CONTROL
 
     def get_name(self):
         return self.name

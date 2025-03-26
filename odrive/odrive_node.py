@@ -73,22 +73,13 @@ class ODriveNode(Node):
         # pprint(f"received position command {msg.data}")
         devices = self.manager.get_devices()
         size = msg.layout.dim[0].size
-        self.console.print(f"size: {size}")  
         # added this as a hack to get the position of the joints as quick. a better way would be to create 
         # ros2 message types for the joints
-        self.manager.set_position(node_id=1, position=msg.data[0])
-        self.manager.set_position(node_id=2, position=msg.data[1])
-        self.manager.set_position(node_id=4, position=msg.data[2])
-        self.manager.set_position(node_id=5, position=msg.data[3])
-        self.manager.set_position(node_id=7, position=msg.data[4])
-        self.manager.set_position(node_id=8, position=msg.data[5])
-        self.manager.set_position(node_id=10, position=msg.data[6])
-        self.manager.set_position(node_id=11, position=msg.data[7])
 
-        # for i in range(12):
-        #     if i in devices:
-        #         self.manager.set_position(node_id=i, position=msg.data[i])
-        #         # self.console.print(f"Setting position for {i} to {msg.data[i]}")
+        for i in range(size):
+            if i in devices:
+                self.manager.set_position(node_id=i, position=msg.data[i])
+                # self.console.print(f"Setting position for {i} to {msg.data[i]}")
 
         # self.manager.set_all_positions(msg.data)
 

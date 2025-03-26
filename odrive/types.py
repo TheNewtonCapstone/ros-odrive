@@ -83,6 +83,7 @@ class ControlMode(IntEnum):
     Enum class that contains the control modes of the ODrive.
     """
 
+    UNDEFINED = -1
     VOLTAGE_CONTROL = 0
     TORQUE_CONTROL = 1
     VELOCITY_CONTROL = 2
@@ -170,6 +171,7 @@ class InputMode(IntEnum):
     Enum class that contains the input modes of the ODrive.
     """
 
+    UNDEFINED = -1
     INACTIVE = 0
     PASSTHROUGH = 1
     VEL_RAMP = 2
