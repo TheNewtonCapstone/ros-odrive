@@ -40,14 +40,30 @@ class ODriveManager:
         """
         self.can_interface.start(self.process_can_message)
         # check if the devices in the config file match the discovered devices
-        # discovered_nodes = self.enumerate_devices()
-        # for node_id, device in self.devices.items():
-        #     if node_id not in discovered_nodes:
-        #         raise Exception(
-        #             f"Device with node_id {node_id} in config file not found"
-        #         )
+        discovered_nodes = self.enumerate_devices()
+        self.load_configs_from_file(config_file_path, discovered_nodes)
+        for node_id, device in self.devices.items():
+            if node_id not in discovered_nodes:
+                raise Exception(
+                    f"Device with node_id {node_id} in config file not found"
+                )
+        self.clear_errors()
+        not_calibrated = self.get_calibrated_devices()
+        hfe_ids = [x for x in not_calibrated if x % 3 == 1]
+        kfe_ids = [x for x in not_calibrated if x % 3 == 2]
+        console.print(f"Calibrating HFE: {hfe_ids}")
+        self.calibrate_group(hfe_ids)
+        console.print(f"Calibrating KFE: {kfe_ids}")
+        self.calibrate_group(kfe_ids)
+        
 
-    def load_configs_from_file(self, config_file_path: str) -> None:
+
+    
+
+        
+        
+
+    def load_configs_from_file(self, config_file_path: str, discovered_nodes: List[int]):
         config = {}
         try:
             with open(config_file_path, "r") as file:
@@ -58,7 +74,7 @@ class ODriveManager:
             for motor_name, motor_params in config["motors_params"].items():
                 self.num_devices += 1
 
-                if motor_params.get("enabled", True):
+                if motor_params.get("enabled", True) and motor_params["node_id"] in discovered_nodes:
                     node_id = motor_params["node_id"]
                     name = motor_params["name"].lower()
                     direction = motor_params["direction"]
@@ -72,13 +88,15 @@ class ODriveManager:
                         position_limit=position_limit,
                         gear_ratio=gear_ratio,
                     )
+                elif motor_params.get("enabled", True) and motor_params["node_id"] not in discovered_nodes:
+                    raise Exception(f"Device with node_id {motor_params['node_id']} not found")
 
             # print all the added devices
             for node_id, device in self.devices.items():
                 console.print(
                     f"[green]Added device {device.name} with node_id {node_id}[/green]"
                 )
-
+            time.sleep(3)
         except FileNotFoundError:
             console.print(
                 f"[red]Failed to load config file: {config_file_path}. Current working directory is {os.getcwd()}[/red]"
@@ -431,7 +449,6 @@ class ODriveManager:
         # Get all the node_ids
         node_ids = list(self.devices.keys())
         # Group by joint type (Hip Abduction/Adduction, Hip Flexion/Extension, Knee Flexion/Extension)
-        haa_ids = [x for x in node_ids if x % 3 == 0]
         hfe_ids = [x for x in node_ids if x % 3 == 1]
         kfe_ids = [x for x in node_ids if x % 3 == 2]
 
@@ -439,7 +456,6 @@ class ODriveManager:
         joint_groups = [
             ("kfe", kfe_ids),
             ("hfe", hfe_ids),
-            ("haa", haa_ids),
         ]
 
         for group_name, ids in joint_groups:
@@ -589,3 +605,27 @@ class ODriveManager:
             self.stop()
 
         return
+    
+    def clear_errors(self) -> None:
+        """
+        Clear errors on all devices
+        """
+        for node_id, device in self.devices.items():
+            hb = device.request_heartbeat()
+            if hb.error != ODriveErrorCode.NO_ERROR :
+                device.clear_errors()
+                console.print(f"[blue]Cleared errors for device {node_id}[/blue]")        
+                
+    def get_calibrated_devices(self)-> List[int]:
+        # get the heartbeats of all the devices
+        not_calibrated = []
+        for node_id, device in self.devices.items():
+            hb = device.arm()
+            if hb.not_calibrated():
+                not_calibrated.append(node_id)
+            console.print(f"Device {node_id} heartbeat: {hb}")
+        return not_calibrated
+           
+         
+        
+        

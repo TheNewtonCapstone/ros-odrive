@@ -85,8 +85,6 @@ class CanInterface:
             self.receive_thread = threading.Thread(target=self._receive_loop)
             self.receive_thread.daemon = True
             self.receive_thread.start()
-            # self.bus.flush_tx_buffer()
-            # self.bus.flush_rx_buffer()
 
             return True
 
@@ -179,6 +177,7 @@ class CanInterface:
                     del self.request_lookup[request_id]
 
     def _receive_loop(self):
+        consecutive_errors = 0
         try:
             while self.running:
                 msg = self.bus.recv(timeout=0.1)
@@ -210,6 +209,12 @@ class CanInterface:
                 # Call the callback if set
                 if self.callback:
                     self.callback(node_id, cmd_id, msg.data)
+            consecutive_errors = 0 
         except Exception as e:
-            console.print(f"CAN interface: Error in receive loop: {e}")
+            consecutive_errors += 1
+            
+            console.print(f"[red]Error in receive loop: {str(e)}[/red]")
+            if consecutive_errors > 10:
+                console.print("[red]Too many consecutive errors, stopping CAN interface[/red]")
+                # TODO : add a restart mechanism     
             time.sleep(0.1)

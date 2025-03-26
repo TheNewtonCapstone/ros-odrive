@@ -19,15 +19,16 @@ class ODriveNode(Node):
     def __init__(self):
         """Initialize the ODrive CAN controller node"""
 
-        super().__init__("odeive_node")
+        super().__init__("odrive_node")
         self.console = Console()
-        self.console.print("Initializing ODrive CAN controller node")
+        self.console.print("[bold green]ODrive Node[/bold green]")
         self.can_interface = CanInterface()
         self.manager = ODriveManager(self.can_interface)
 
         share_directory = get_package_share_directory("n_odrive")
         config_file_path = os.path.join(share_directory, "config/newton.yaml")
-        self.manager.load_configs_from_file(config_file_path)
+        self.manager.start(config_file_path=config_file_path)
+        # self.manager.load_configs_from_file(config_file_path)
 
         # self_state_timer = self.create_timer(0.02, self.publish_joint_states)
         # create subs
@@ -72,15 +73,15 @@ class ODriveNode(Node):
         # print(self.manager.get_device(2).request_heartbeat())
         # print(self.manager.get_device(8).request_heartbeat())
         # print(self.manager.get_device(11).request_heartbeat())
-        self.manager.enumerate_devices()
+        # self.manager.enumerate_devices()
         # self.manager.calibrate_all()
         # self.console.print(self.manager.get_device(2).request_heartbeat())
 
-        self.odrive_ready_pub.publish(
-            Bool(
-                data=self.manager.get_devices_calibrated(),
-            )
-        )
+        # self.odrive_ready_pub.publish(
+        #     Bool(
+        #         data=self.manager.get_devices_calibrated(),
+        #     )
+        # )
 
         # self.manager.initialize_all()
         # self.manager.calibrate_one(0)
@@ -104,6 +105,7 @@ class ODriveNode(Node):
         # self.manager.set_all_positions(msg.data)
 
     def publish_joint_states(self):
+        return 
         if not self.manager.get_devices_calibrated():
             return
 

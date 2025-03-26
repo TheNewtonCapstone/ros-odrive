@@ -214,6 +214,8 @@ class Heartbeat:
     def _done(self):
         return self.done
 
+    def not_calibrated(self):
+        return self.result == ODriveProcedureResult.NOT_CALIBRATED
     def is_armed(self):
         return self.state == AxisState.CLOSED_LOOP_CONTROL
 
