@@ -29,7 +29,6 @@ class ODriveNode(Node):
         config_file_path = os.path.join(share_directory, "config/newton.yaml")
         self.manager.start(config_file_path=config_file_path)
 
-        self_state_timer = self.create_timer(0.02, self.publish_joint_states)
         # create subs
         self.position_sub = self.create_subscription(
             Float32MultiArray,
@@ -40,17 +39,12 @@ class ODriveNode(Node):
 
         self.position_pub = self.create_publisher(
             Float32MultiArray,
-            "joints_state_positions",
+            "joint_state_positions",
             10,
         )
         self.velocity_pub = self.create_publisher(
             Float32MultiArray,
             "joint_state_velocities",
-            10,
-        )
-        self.joint_state_pub = self.create_publisher(
-            Float32MultiArray,
-            "joints_state_velocities",
             10,
         )
         self.odrive_ready_pub = self.create_publisher(
@@ -60,6 +54,7 @@ class ODriveNode(Node):
         )
         # TODO: MAKE A VAR FOR THIS RATE
 
+        self_state_timer = self.create_timer(0.02, self.publish_joint_states)
 
         self.odrive_ready_pub.publish(
             Bool(
@@ -95,6 +90,8 @@ class ODriveNode(Node):
 
         self.position_pub.publish(positions_msg)
         self.velocity_pub.publish(velocity_msg)
+        pprint(f"published positions {positions_msg.data}")
+        pprint(f"published velocities {velocity_msg.data}")
 
         return
 
