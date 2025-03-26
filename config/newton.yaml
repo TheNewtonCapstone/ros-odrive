@@ -9,6 +9,8 @@ motors_params:
     position_limit: 0.5
     direction: -1
     gear_ratio: 9.0
+    start_pos: 3.14
+  
   
   FL_HFE:
     enabled: True
@@ -17,6 +19,7 @@ motors_params:
     position_limit: 0.85
     direction: -1
     gear_ratio: 9.0
+    start_pos: 1.57
 
   FL_KFE:
     enabled: True
@@ -25,6 +28,7 @@ motors_params:
     position_limit: 3
     direction: -1
     gear_ratio: 9.0
+    start_pos: 3.14
 
   FR_HAA:
     enabled: False
@@ -33,6 +37,7 @@ motors_params:
     position_limit: 0.5
     direction: -1
     gear_ratio: 9.0
+    start_pos: 0.0
 
   FR_HFE:
     enabled: True
@@ -41,6 +46,7 @@ motors_params:
     position_limit: 0.85
     direction: 1
     gear_ratio: 9.0
+    start_pos: 1.57
   
   FR_KFE:
     enabled: True
@@ -49,6 +55,7 @@ motors_params:
     position_limit: 3
     direction: 1
     gear_ratio: 9.0
+    start_pos: 3.14
 
   HL_HAA:
     enabled: False
@@ -57,6 +64,7 @@ motors_params:
     position_limit: 0.5
     direction: -1
     gear_ratio: 9.0
+    start_pos: 0.0
 
   HL_HFE:
     enabled: True
@@ -65,6 +73,7 @@ motors_params:
     position_limit: 0.85
     direction: -1
     gear_ratio: 9.0
+    start_pos: -1.57
 
   HL_KFE:
     enabled: True
@@ -73,6 +82,8 @@ motors_params:
     position_limit: 3
     direction: -1
     gear_ratio: 9.0
+    start_pos: 3.14
+
 
   HR_HAA:
     enabled: False
@@ -81,7 +92,8 @@ motors_params:
     position_limit: 0.5
     direction: -1
     gear_ratio: 9.0
-  
+    start_pos: 0.0
+
   HR_HFE:
     enabled: True
     name: HR_HFE
@@ -89,6 +101,7 @@ motors_params:
     position_limit: 0.85
     direction: 1
     gear_ratio: 9.0
+    start_pos: -1.57
 
   HR_KFE:
     enabled: True
@@ -97,3 +110,4 @@ motors_params:
     position_limit: 3
     direction: -1
     gear_ratio: 9.0
+    start_pos: 3.14

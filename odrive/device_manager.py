@@ -51,10 +51,25 @@ class ODriveManager:
         not_calibrated = self.get_calibrated_devices()
         hfe_ids = [x for x in not_calibrated if x % 3 == 1]
         kfe_ids = [x for x in not_calibrated if x % 3 == 2]
-        console.print(f"Calibrating HFE: {hfe_ids}")
-        self.calibrate_group(hfe_ids)
+
         console.print(f"Calibrating KFE: {kfe_ids}")
         self.calibrate_group(kfe_ids)
+        console.print(f"Calibrating HFE: {hfe_ids}")
+        self.calibrate_group(hfe_ids)
+
+        self.set_controller_mode(ControlMode.POSITION_CONTROL, InputMode.POS_FILTER)
+        
+        # self.calibrate_all()
+        # go to starting position
+        for node_id, device in self.devices.items():
+            device.set_position(device.starting_position)
+            console.print(f"Node ID: {node_id} at position {device.starting_position} current position: {device.get_position()}")
+            time.sleep(0.5)
+            
+        self._devices_calibrated = True
+        
+        
+        
         
 
 
@@ -80,6 +95,7 @@ class ODriveManager:
                     direction = motor_params["direction"]
                     position_limit = motor_params["position_limit"]
                     gear_ratio = motor_params["gear_ratio"]
+                    starting_position = motor_params.get("start_pos", 0.0)
 
                     self.add_device(
                         node_id=node_id,
@@ -87,6 +103,7 @@ class ODriveManager:
                         direction=direction,
                         position_limit=position_limit,
                         gear_ratio=gear_ratio,
+                        starting_position=starting_position,
                     )
                 elif motor_params.get("enabled", True) and motor_params["node_id"] not in discovered_nodes:
                     raise Exception(f"Device with node_id {motor_params['node_id']} not found")
@@ -111,6 +128,7 @@ class ODriveManager:
         name: str,
         direction: float,
         position_limit: float,
+        starting_position: float,
         gear_ratio: float,
     ) -> ODriveDevice:
         if node_id in self.devices:
@@ -126,6 +144,7 @@ class ODriveManager:
             direction,
             position_limit,
             gear_ratio,
+            starting_position,
             self.send_can_frame,
             self.request,
         )
@@ -628,4 +647,9 @@ class ODriveManager:
            
          
         
-        
+    def set_controller_mode(self, control_mode: ControlMode, input_mode: InputMode):
+        for node_id, device in self.devices.items():
+            console.print(f"Setting controller mode {control_mode.name} for device {node_id}")
+            device.disarm()
+            device.set_controller_mode(control_mode, input_mode) 
+            device.arm()

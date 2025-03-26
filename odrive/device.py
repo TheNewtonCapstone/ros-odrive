@@ -29,6 +29,7 @@ class ODriveDevice:
         direction: float,
         position_limit: float,
         gear_ratio: float,
+        starting_position: float,
         send_can_frame: Callable[[int, bytes], bool],
         request: Callable[[int, int, bytes, float], Optional[bytes]] = None,
     ):
@@ -47,6 +48,7 @@ class ODriveDevice:
         self.gear_ratio = gear_ratio  # gear ratio of the motor
         self.send_can_frame = send_can_frame
         self.request = request
+        self.starting_position = starting_position
 
         # rad to motor turns conversion
         self.TURNS_TO_RAD = (2 * math.pi) / self.gear_ratio
