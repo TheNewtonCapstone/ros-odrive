@@ -700,14 +700,13 @@ class ODriveDevice:
 
     def rad_to_turns(self, rad: float) -> float:
         """Convert radians to turns"""
-        rad_with_direction = self.normalize_angle(rad) * self.direction
-        return (rad_with_direction * self.RAD_TO_TURNS) + self.offset
+        # rad_with_direction = self.normalize_angle(rad) * self.direction
+        clamped_rad = self.clamp_to_limits(rad) * self.direction
+        return (clamped_rad * self.RAD_TO_TURNS) + self.offset
 
     def turns_to_rad(self, turns: float) -> float:
         """Convert turns to radians"""
-        return self.normalize_angle(
-            (turns - self.offset) * self.TURNS_TO_RAD * self.direction
-        )
+        return (turns - self.offset) * self.TURNS_TO_RAD * self.direction
 
     def is_within_limits(self, pos: float) -> bool:
         """Check if the position (rad) is within the limits"""
