@@ -27,31 +27,25 @@ class ODriveNode(Node):
 
         share_directory = get_package_share_directory("n_odrive")
         config_file_path = os.path.join(share_directory, "config/newton.yaml")
-        self.manager.start(config_file_path=config_file_path)
         # self.manager.load_configs_from_file(config_file_path)
 
-        # self_state_timer = self.create_timer(0.02, self.publish_joint_states)
+        self_state_timer = self.create_timer(0.02, self.publish_joint_states)
         # create subs
         self.position_sub = self.create_subscription(
             Float32MultiArray,
-            "joints_cmd_positions",
+            "joint_cmd_positions",
             self.position_callback,
             10,
         )
 
         self.position_pub = self.create_publisher(
             Float32MultiArray,
-            "joints_state_positions",
+            "joint_state_positions",
             10,
         )
         self.velocity_pub = self.create_publisher(
             Float32MultiArray,
             "joint_state_velocities",
-            10,
-        )
-        self.joint_state_pub = self.create_publisher(
-            Float32MultiArray,
-            "joints_state_velocities",
             10,
         )
         self.odrive_ready_pub = self.create_publisher(
@@ -61,9 +55,13 @@ class ODriveNode(Node):
         )
         # TODO: MAKE A VAR FOR THIS RATE
 
-        self.can_interface.start(self.manager.process_can_message)
-        time.sleep(3)
-        timer = self.create_timer(0.01, self.data_collection)
+        self.manager.start(
+            config_file_path=config_file_path,
+            odrive_ready_cb=lambda ready: self.odrive_ready_pub.publish(
+                Bool(data=ready)
+            ),
+        )
+        # timer = self.create_timer(0.01, self.data_collection)
         # for i in range(12):
         #    self.manager.get_device(i).request_heartbeat()
         # self.manager.get_device(5).request_heartbeat()
@@ -78,12 +76,6 @@ class ODriveNode(Node):
         # self.manager.calibrate_all()
         # self.console.print(self.manager.get_device(2).request_heartbeat())
 
-        # self.odrive_ready_pub.publish(
-        #     Bool(
-        #         data=self.manager.get_devices_calibrated(),
-        #     )
-        # )
-
         # self.manager.initialize_all()
         # self.manager.calibrate_one(0)
         # self.manager.calibrate_one(1)
@@ -95,7 +87,6 @@ class ODriveNode(Node):
     def position_callback(self, msg):
         # # command for position command messages
         # pprint(f"received position command {msg.data}")
-        return
         devices = self.manager.get_devices()
 
         for i in range(12):
@@ -106,61 +97,114 @@ class ODriveNode(Node):
         # self.manager.set_all_positions(msg.data)
 
     def data_collection(self):
-        control_frequency = 50 # Hz - slower control updates
+        control_frequency = 50  # Hz - slower control updates
         control_period = 1.0 / control_frequency
-        
+
         data_frequency = 100  # Hz - faster data collection
         data_period = 1.0 / data_frequency
-        
+
         amplitudes = [0.4, 0.5, 0.6, 0.7, 0.8]
         frequencies = [1, 1.5, 2, 2.5, 3]
-        
+
         standing_gait = {
-            0: -0.8, 1: 1.4, 2: -0.8, 3: 1.4,
-            4: -0.8, 5: 1.4, 6: -0.8, 7: 1.4,            
+            0: -0.8,
+            1: 1.4,
+            2: -0.8,
+            3: 1.4,
+            4: -0.8,
+            5: 1.4,
+            6: -0.8,
+            7: 1.4,
         }
         new_gait = {
-            0: 0.0, 1: 0.0, 2: 0.0, 3: 0.0,
-            4: 0.0, 5: 0.0, 6: 0.0, 7: 0.0,
+            0: 0.0,
+            1: 0.0,
+            2: 0.0,
+            3: 0.0,
+            4: 0.0,
+            5: 0.0,
+            6: 0.0,
+            7: 0.0,
         }
-        
-        
+
         import csv
-        with open('data.csv', mode='a') as file:
+
+        with open("data.csv", mode="a") as file:
             writer = csv.writer(file)
-            writer.writerow(["time", "target_0", "target_1", "target_2", "target_3", "target_4", "target_5", "target_6", "target_7",
-                            "pos_0", "pos_1", "pos_2", "pos_3", "pos_4", "pos_5", "pos_6", "pos_7",
-                            "vel_0", "vel_1", "vel_2", "vel_3", "vel_4", "vel_5", "vel_6", "vel_7",
-                            "tor_0", "tor_1", "tor_2", "tor_3", "tor_4", "tor_5", "tor_6", "tor_7",
-                            "tor_est_0", "tor_est_1", "tor_est_2", "tor_est_3", "tor_est_4", "tor_est_5", "tor_est_6", "tor_est_7",
-                            "amp", "freq",
-                            ])
-            
+            writer.writerow(
+                [
+                    "time",
+                    "target_0",
+                    "target_1",
+                    "target_2",
+                    "target_3",
+                    "target_4",
+                    "target_5",
+                    "target_6",
+                    "target_7",
+                    "pos_0",
+                    "pos_1",
+                    "pos_2",
+                    "pos_3",
+                    "pos_4",
+                    "pos_5",
+                    "pos_6",
+                    "pos_7",
+                    "vel_0",
+                    "vel_1",
+                    "vel_2",
+                    "vel_3",
+                    "vel_4",
+                    "vel_5",
+                    "vel_6",
+                    "vel_7",
+                    "tor_0",
+                    "tor_1",
+                    "tor_2",
+                    "tor_3",
+                    "tor_4",
+                    "tor_5",
+                    "tor_6",
+                    "tor_7",
+                    "tor_est_0",
+                    "tor_est_1",
+                    "tor_est_2",
+                    "tor_est_3",
+                    "tor_est_4",
+                    "tor_est_5",
+                    "tor_est_6",
+                    "tor_est_7",
+                    "amp",
+                    "freq",
+                ]
+            )
 
             devices = self.manager.get_devices().items()
             base_position = 0
             hfe_offset = 0
             kfe_offset = 0
-            
+
             for amp in amplitudes:
                 for freq in frequencies:
                     print(f"Testing amplitude {amp} and frequency {freq}")
-                    
+
                     experiment_duration = 5.0
                     start_experiment_time = time.time()
-                   
+
                     last_control_time = 0
                     last_data_time = 0
-                    
+
                     while time.time() - start_experiment_time < experiment_duration:
                         current_time = time.time()
                         elapsed_time = current_time - start_experiment_time
-                        
+
                         if current_time - last_control_time >= control_period:
-                            base_position = amp * math.sin(2 * math.pi * freq * elapsed_time)
+                            base_position = amp * math.sin(
+                                2 * math.pi * freq * elapsed_time
+                            )
                             hfe_offset = amp * base_position
                             kfe_offset = base_position * -2.0 * amp
-                            
+
                             for i, device in devices:
                                 if device.get_id() % 2 == 0:
                                     new_gait[i] = standing_gait[i] + hfe_offset
@@ -169,53 +213,86 @@ class ODriveNode(Node):
 
                             self.manager.set_positions_all(new_gait)
                             last_control_time = current_time
-                        
-                        ## collect data 
+
+                        ## collect data
                         if (current_time - last_data_time) >= data_period:
                             positions = self.manager.get_position_all()
                             velocities = self.manager.get_velocities_all()
                             torques = self.manager.get_torque_all()
                             torques_est = self.manager.get_torque_estimate_all()
                             writer.writerow(
-                                [current_time,
-                                    new_gait[0], new_gait[1], new_gait[2], new_gait[3], new_gait[4], new_gait[5], new_gait[6], new_gait[7],
-                                    positions[0], positions[1], positions[2], positions[3], positions[4], positions[5], positions[6], positions[7],
-                                    velocities[0], velocities[1], velocities[2], velocities[3], velocities[4], velocities[5], velocities[6], velocities[7],
-                                    torques[0], torques[1], torques[2], torques[3], torques[4], torques[5], torques[6], torques[7],
-                                    torques_est[0], torques_est[1], torques_est[2], torques_est[3], torques_est[4], torques_est[5], torques_est[6], torques_est[7],
-                                    amp, freq,
-                                 ])
+                                [
+                                    current_time,
+                                    new_gait[0],
+                                    new_gait[1],
+                                    new_gait[2],
+                                    new_gait[3],
+                                    new_gait[4],
+                                    new_gait[5],
+                                    new_gait[6],
+                                    new_gait[7],
+                                    positions[0],
+                                    positions[1],
+                                    positions[2],
+                                    positions[3],
+                                    positions[4],
+                                    positions[5],
+                                    positions[6],
+                                    positions[7],
+                                    velocities[0],
+                                    velocities[1],
+                                    velocities[2],
+                                    velocities[3],
+                                    velocities[4],
+                                    velocities[5],
+                                    velocities[6],
+                                    velocities[7],
+                                    torques[0],
+                                    torques[1],
+                                    torques[2],
+                                    torques[3],
+                                    torques[4],
+                                    torques[5],
+                                    torques[6],
+                                    torques[7],
+                                    torques_est[0],
+                                    torques_est[1],
+                                    torques_est[2],
+                                    torques_est[3],
+                                    torques_est[4],
+                                    torques_est[5],
+                                    torques_est[6],
+                                    torques_est[7],
+                                    amp,
+                                    freq,
+                                ]
+                            )
 
                             last_data_time = current_time
                             last_data_time = current_time
 
                         time.sleep(0.01)
-                    self.console.print(f"[blue]Finished testing amplitude {amp} and frequency {freq}[blue]")
-                            
-                                    
-                             
+                    self.console.print(
+                        f"[blue]Finished testing amplitude {amp} and frequency {freq}[blue]"
+                    )
 
         # get all the torque estimates
 
-    # def publish_joint_states(self):
-    #     if not self.manager.get_devices_calibrated():
-    #         return
+    def publish_joint_states(self):
+        if not self.manager.get_devices_calibrated():
+            return
 
-    #     positions_msg = Float32MultiArray()
-    #     velocity_msg = Float32MultiArray()
+        positions_msg = Float32MultiArray()
+        velocity_msg = Float32MultiArray()
 
-    #     positions_msg.data = self.manager.get_all_positions()
-    #     velocity_msg.data = self.manager.get_all_velocities()
+        positions_msg.data = self.manager.get_position_all()
+        velocity_msg.data = self.manager.get_velocities_all()
 
-    #     self.position_pub.publish(positions_msg)
-    #     self.velocity_pub.publish(velocity_msg)
-
-
+        self.position_pub.publish(positions_msg)
+        self.velocity_pub.publish(velocity_msg)
 
     def shutdown(self):
         self.manager.estop_all()
-
-        pass
 
 
 def main():

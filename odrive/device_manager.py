@@ -34,7 +34,11 @@ class ODriveManager:
         self.running = False
         self._devices_calibrated = False
 
-    def start(self, config_file_path: str) -> None:
+    def start(
+        self,
+        config_file_path: str,
+        odrive_ready_cb: Callable[..., bool],
+    ) -> None:
         """
         Start the manager and all devices
         """
@@ -58,31 +62,17 @@ class ODriveManager:
         self.calibrate_group(kfe_ids)
         console.print(f"Calibrating HFE: {hfe_ids}")
         self.calibrate_group(hfe_ids)
+        
+        console.print(f"Calibrated devices {self.devices} and arming all")
         self.arm_all()
-        
-        
 
-        
-        # self.calibrate_all()
-        # go to starting position
-        # for node_id, device in self.devices.items():
-        #     device.set_position(device.starting_position)
-        #     console.print(f"Node ID: {node_id} at position {device.starting_position} current position: {device.get_position()}")
-        #     time.sleep(0.5)
-            
         self._devices_calibrated = True
-        
-        
-        
-        
 
+        odrive_ready_cb(self._devices_calibrated)
 
-    
-
-        
-        
-
-    def load_configs_from_file(self, config_file_path: str, discovered_nodes: List[int]):
+    def load_configs_from_file(
+        self, config_file_path: str, discovered_nodes: List[int]
+    ):
         config = {}
         try:
             with open(config_file_path, "r") as file:
@@ -93,7 +83,10 @@ class ODriveManager:
             for motor_name, motor_params in config["motors_params"].items():
                 self.num_devices += 1
 
-                if motor_params.get("enabled", True) and motor_params["node_id"] in discovered_nodes:
+                if (
+                    motor_params.get("enabled", True)
+                    and motor_params["node_id"] in discovered_nodes
+                ):
                     node_id = motor_params["node_id"]
                     name = motor_params["name"].lower()
                     direction = motor_params["direction"]
@@ -109,8 +102,13 @@ class ODriveManager:
                         gear_ratio=gear_ratio,
                         starting_position=starting_position,
                     )
-                elif motor_params.get("enabled", True) and motor_params["node_id"] not in discovered_nodes:
-                    raise Exception(f"Device with node_id {motor_params['node_id']} not found")
+                elif (
+                    motor_params.get("enabled", True)
+                    and motor_params["node_id"] not in discovered_nodes
+                ):
+                    raise Exception(
+                        f"Device with node_id {motor_params['node_id']} not found"
+                    )
 
             # print all the added devices
             for node_id, device in self.devices.items():
@@ -172,7 +170,7 @@ class ODriveManager:
         # loop and position missinf from - 0 to 11
         for i, device in self.devices.items():
             positions.append(device.get_position())
-            
+
         return positions
 
     def get_velocities_all(self) -> List[float]:
@@ -339,7 +337,7 @@ class ODriveManager:
         for node_id, device in self.devices.items():
             if device.is_armed():
                 console.print(f"[green]Device {device.name} is already armed[/green]")
-                continue    
+                continue
 
             if not device.is_armed() and device.is_calibrated:
                 console.print(f"[blue]Arming device {device.name}[/blue]")
@@ -494,7 +492,8 @@ class ODriveManager:
                     )
                     not_calib.append(node_id)
 
-            self.calibrate_group(not_calib)
+            if len(not_calib) > 0:
+                self.calibrate_group(not_calib)
 
             for node_id in ids:
                 device = self.devices[node_id]
@@ -551,7 +550,7 @@ class ODriveManager:
                     )
 
                     # Wait a moment between calibration steps
-                    time.sleep(0.5)
+                    time.sleep(0.2)
 
             console.print(f"[blue]Completed calibration of {group_name} joints[/blue]")
 
@@ -560,14 +559,15 @@ class ODriveManager:
 
     def get_torque_all(self) -> List[float]:
         torques = []
-        
+
         for i, devices in self.devices.items():
             torques.append(devices.get_torque())
 
         return torques
+
     def get_torque_estimate_all(self) -> List[float]:
         torques = []
-        
+
         for i, device in self.devices.items():
             torques.append(device.get_torque_estimate())
         return torques
@@ -590,7 +590,7 @@ class ODriveManager:
         pendings_nodes = set(node_ids)
         errored_nodes: Dict[int, Heartbeat] = {}
         dones = []
-        
+
         while len(pendings_nodes) > 0 and (time.time() - start_time) < timeout:
             nodes_to_checks = pendings_nodes.copy()  # avoid mutation while iterating
 
@@ -622,18 +622,18 @@ class ODriveManager:
             self.stop()
 
         return
-    
+
     def clear_errors(self) -> None:
         """
         Clear errors on all devices
         """
         for node_id, device in self.devices.items():
             hb = device.request_heartbeat()
-            if hb.error != ODriveErrorCode.NO_ERROR :
+            if hb.error != ODriveErrorCode.NO_ERROR:
                 device.clear_errors()
-                console.print(f"[blue]Cleared errors for device {node_id}[/blue]")        
-                
-    def get_uncalibrate_devices(self)-> List[int]:
+                console.print(f"[blue]Cleared errors for device {node_id}[/blue]")
+
+    def get_uncalibrate_devices(self) -> List[int]:
         # get the heartbeats of all the devices
         not_calibrated = []
         for node_id, device in self.devices.items():
@@ -643,13 +643,13 @@ class ODriveManager:
             else:
                 device.is_calibrated = True
             console.print(f"Device {node_id} heartbeat: {hb}")
-        return not_calibrated           
-         
-        
+        return not_calibrated
+
     def set_controller_mode(self, control_mode: ControlMode, input_mode: InputMode):
         for node_id, device in self.devices.items():
-            console.print(f"Setting controller mode {control_mode.name} for device {node_id}")
+            console.print(
+                f"Setting controller mode {control_mode.name} for device {node_id}"
+            )
             device.disarm()
-            device.set_controller_mode(control_mode, input_mode) 
+            device.set_controller_mode(control_mode, input_mode)
             # device.arm()
-            
