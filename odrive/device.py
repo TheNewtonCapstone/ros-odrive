@@ -102,16 +102,11 @@ class ODriveDevice:
             bool: True if message was sent successfully
         """
 
-        hb = self.request_heartbeat()
-        if hb.state != AxisState.CLOSED_LOOP_CONTROL:
-            hb = self.arm()
-            if hb.state != AxisState.CLOSED_LOOP_CONTROL:
-                raise NotArmedException(
-                    self.node_id,
-                    message="Axis is not in closed loop control mode",
-                    error_code=ODriveErrorCode(hb.error),
-                    procedure_result=ODriveProcedureResult(hb.result),
-                )
+        if not self.is_calibrated and not self.is_armed():
+            self.console.print(f"Calibrating {self.name}")
+            # self.calibrate()
+            self.arm()
+            
 
         turns = self.rad_to_turns(pos)
         # self.console.print(f"Setting position to {pos} turns: {turns}")
@@ -439,7 +434,7 @@ class ODriveDevice:
         if success:
             self.last_send_time = time.time()
 
-        # TODO: ADD CHECKING TO SEE IF ENCODER
+        # TODO: ADD CHECKING TO SEE IF ENCODER is the correct position
 
     def estop(self) -> bool:
         """

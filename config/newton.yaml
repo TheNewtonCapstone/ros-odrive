@@ -16,7 +16,7 @@ motors_params:
     enabled: True
     name: FL_HFE
     node_id: 0
-    position_limit: 0.85
+    position_limit: 1.57
     direction: -1
     gear_ratio: 9.0
     start_pos: 1.57
@@ -43,7 +43,7 @@ motors_params:
     enabled: True
     name: FR_HFE
     node_id: 2
-    position_limit: 0.85
+    position_limit: 1.57
     direction: 1
     gear_ratio: 9.0
     start_pos: 1.57
@@ -70,7 +70,7 @@ motors_params:
     enabled: True
     name: HL_HFE
     node_id: 4
-    position_limit: 0.85
+    position_limit: 1.57
     direction: -1
     gear_ratio: 9.0
     start_pos: -1.57
@@ -98,7 +98,7 @@ motors_params:
     enabled: True
     name: HR_HFE
     node_id: 6
-    position_limit: 0.85
+    position_limit: 1.57
     direction: 1
     gear_ratio: 9.0
     start_pos: -1.57

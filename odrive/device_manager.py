@@ -160,7 +160,7 @@ class ODriveManager:
             positions.append(device.get_position())
         return positions
 
-    def get_all_velocities(self) -> List[float]:
+    def get_velocities_all(self) -> List[float]:
         """
         Get velocities of all devices
         """
@@ -352,8 +352,8 @@ class ODriveManager:
     def arm_all(self) -> None:
         # set control mode
         for node_id, device in self.devices.items():
-            if device.is_armed:
-                continue
+            # if device.is_armed:
+            #     continue
 
             if device.is_calibrated:
                 device.arm()
@@ -586,13 +586,15 @@ class ODriveManager:
         console.print(f"[green]All device calibration completed[/green]")
         self._devices_calibrated = True
 
-    def get_torques(self) -> List[float]:
+    def get_torque_all(self) -> List[float]:
         torques = []
-        for i in range(11):
-            if i in self.devices:
-                torques.append(self.devices[i].get_torque())
-            else:
-                torques.append(0.0)
+        for i, devices in self.devices.items():
+            torques.append(devices.get_torque())
+        # for i in range(11):
+        #     if i in self.devices:
+        #         torques.append(self.devices[i].get_torque())
+        #     else:
+        #         torques.append(0.0)
 
         return torques
 

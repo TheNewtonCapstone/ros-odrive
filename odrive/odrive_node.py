@@ -42,6 +42,12 @@ class ODriveNode(Node):
             "joint_state_positions",
             10,
         )
+
+        self.torque_pub = self.create_publisher(
+            Float32MultiArray,
+            "joint_state_torques",
+            10,
+        )
         self.velocity_pub = self.create_publisher(
             Float32MultiArray,
             "joint_state_velocities",
@@ -84,14 +90,17 @@ class ODriveNode(Node):
 
         positions_msg = Float32MultiArray()
         velocity_msg = Float32MultiArray()
+        torque_msg = Float32MultiArray()
 
         positions_msg.data = self.manager.get_position_all()
-        velocity_msg.data = self.manager.get_all_velocities()
+        velocity_msg.data = self.manager.get_velocities_all()
+        torque_msg.data = self.manager.get_torque_all()
 
         self.position_pub.publish(positions_msg)
         self.velocity_pub.publish(velocity_msg)
-        pprint(f"published positions {positions_msg.data}")
-        pprint(f"published velocities {velocity_msg.data}")
+        self.torque_pub.publish(torque_msg)
+        # pprint(f"published positions {positions_msg.data}")
+        # pprint(f"published velocities {velocity_msg.data}")
 
         return
 
