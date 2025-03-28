@@ -103,8 +103,8 @@ class ODriveDevice:
         """
 
         if not self.is_calibrated and not self.is_armed():
-            self.console.print(f"Calibrating {self.name}")
-            # self.calibrate()
+            self.console.print(f"Device {self.name} is not calibrated, calibrating and arming")
+            self.calibrate()
             self.arm()
             
 
@@ -401,6 +401,8 @@ class ODriveDevice:
             self.last_receive_time = time.time()
 
     def get_torque(self):
+        return self.torque_target
+    def get_torque_estimate(self):
         return self.torque_estimate
 
     def process_can_message(self, cmd_id: int, data: bytes) -> None:

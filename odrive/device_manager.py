@@ -34,7 +34,6 @@ class ODriveManager:
         self.running = False
         self._devices_calibrated = False
 
-
     def start(self, config_file_path: str) -> None:
         """
         Start the manager and all devices
@@ -49,23 +48,38 @@ class ODriveManager:
                     f"Device with node_id {node_id} in config file not found"
                 )
         self.clear_errors()
-        self.set_controller_mode_all(ControlMode.POSITION_CONTROL, InputMode.POS_FILTER)
-        # set control mode first to avoid arming and disarming 
+        self.set_controller_mode(ControlMode.POSITION_CONTROL, InputMode.POS_FILTER)
 
-        not_calibrated = self.get_calibrated_devices()
-
-        # calibrate per group
+        not_calibrated = self.get_uncalibrate_devices()
         hfe_ids = [x for x in not_calibrated if x % 2 == 0]
-        kfe_ids = [x for x in not_calibrated if x % 2 != 0]
+        kfe_ids = [x for x in not_calibrated if x % 2 == 1]
 
         console.print(f"Calibrating KFE: {kfe_ids}")
         self.calibrate_group(kfe_ids)
         console.print(f"Calibrating HFE: {hfe_ids}")
         self.calibrate_group(hfe_ids)
-        self.arm_all() 
-        # self.set_init_positions_all()
+        self.arm_all()
+        
+        
+
+        
+        # self.calibrate_all()
+        # go to starting position
+        # for node_id, device in self.devices.items():
+        #     device.set_position(device.starting_position)
+        #     console.print(f"Node ID: {node_id} at position {device.starting_position} current position: {device.get_position()}")
+        #     time.sleep(0.5)
             
         self._devices_calibrated = True
+        
+        
+        
+        
+
+
+    
+
+        
         
 
     def load_configs_from_file(self, config_file_path: str, discovered_nodes: List[int]):
@@ -140,7 +154,6 @@ class ODriveManager:
         )
 
         self.devices[node_id] = device
-        self.num_devices += 1
 
         return device
 
@@ -155,9 +168,11 @@ class ODriveManager:
         Get positions of all devices
         """
         positions = []
-        # loop through devices and get the positions
+
+        # loop and position missinf from - 0 to 11
         for i, device in self.devices.items():
             positions.append(device.get_position())
+            
         return positions
 
     def get_velocities_all(self) -> List[float]:
@@ -298,72 +313,40 @@ class ODriveManager:
 
         console.print(f"[blue]Starting calibration of {device.name}...[/blue]")
 
-        err, state, procedure_res, _ = device.calibrate()
+        hb = device.calibrate()
 
         if (
-            err != ODriveErrorCode.NO_ERROR
-            or procedure_res != ODriveProcedureResult.SUCCESS
+            hb.error != ODriveErrorCode.NO_ERROR
+            or hb.result != ODriveProcedureResult.SUCCESS
         ):
             self.stop()
 
-        return err, state, procedure_res, _
+        return hb
 
-    def set_init_positions_all(self) -> None:
-        """
-        Set initial positions for all devices
-        """
-        # group all the available device between hfe and kfe
-        available_devices = list(self.devices.keys())
-        hfe_devices = [self.get_device(x) for x in available_devices if x % 2 == 0]
-        kfe_devices = [self.get_device(x) for x in available_devices if x % 2 != 0]
-        
-        for device in kfe_devices:
-            console.print(f"Setting initial position for device {device.node_id}")
-            self.set_position(device.node_id, device.starting_position)
-        time.sleep(1)
-        
-        for device in hfe_devices:
-            console.print(f"Setting initial position for device {device.node_id}")
-            self.set_position(device.node_id, device.starting_position)
-        time.sleep(1)
-        
-        
-        
-    def set_position_all(self, positions: dict[int, float]) -> None:
+    def set_positions_all(self, positions: dict[int, float]) -> None:
         """
         Set positions for all devices
 
         Args:
             positions: List of positions to set
         """
-        # get list of available devices
-        available_devices = list(self.devices.keys())
-
         # get the array of avaialble devices
         for i, (node_id, device) in enumerate(self.devices.items()):
-            if i < len(positions):
-                if node_id in available_devices:
-                    device.set_position(positions.get(node_id))
-            else:
-                console.print(
-                    f"[yellow]Not enough positions provided for device {node_id}[/yellow]"
-                )
+            device.set_position(positions.get(node_id))
 
     def arm_all(self) -> None:
         # set control mode
         for node_id, device in self.devices.items():
-            # if device.is_armed:
-            #     continue
+            if device.is_armed():
+                console.print(f"[green]Device {device.name} is already armed[/green]")
+                continue    
 
-            if device.is_calibrated:
-                device.arm()
-                continue
-
-            if not device.is_calibrated:
-                console.print(f"[red]Device with node_id {node_id} not calibrated[/red]")
+            if not device.is_armed() and device.is_calibrated:
+                console.print(f"[blue]Arming device {device.name}[/blue]")
                 device.calibrate()
-                device.set_controller_mode(ControlMode.POSITION_CONTROL, InputMode.POS_FILTER)
                 device.arm()
+                time.sleep(0.5)
+                continue
 
     def init_device(
         self,
@@ -467,19 +450,8 @@ class ODriveManager:
         if not device:
             console.print(f"[red]Device with node_id {node_id} not found[/red]")
             return
-        # check if device is armed
-        if device.is_calibrated and device.is_armed and device.control_mode == ControlMode.POSITION_CONTROL:
-            device.set_position(position)
-            return 
-        
-        if not device.is_calibrated:
-            console.print(f"[red]Device with node_id {node_id} not calibrated[/red]")
-            device.calibrate()
-            device.set_controller_mode(ControlMode.POSITION_CONTROL, InputMode.POS_FILTER)
-            device.arm()
-            device.set_position(position)
-            return 
 
+        device.set_position(position)
 
     def calibrate_all(self) -> None:
         """
@@ -588,14 +560,16 @@ class ODriveManager:
 
     def get_torque_all(self) -> List[float]:
         torques = []
+        
         for i, devices in self.devices.items():
             torques.append(devices.get_torque())
-        # for i in range(11):
-        #     if i in self.devices:
-        #         torques.append(self.devices[i].get_torque())
-        #     else:
-        #         torques.append(0.0)
 
+        return torques
+    def get_torque_estimate_all(self) -> List[float]:
+        torques = []
+        
+        for i, device in self.devices.items():
+            torques.append(device.get_torque_estimate())
         return torques
 
     # funtion to calibrate some of the motors
@@ -615,7 +589,8 @@ class ODriveManager:
         start_time = time.time()
         pendings_nodes = set(node_ids)
         errored_nodes: Dict[int, Heartbeat] = {}
-
+        dones = []
+        
         while len(pendings_nodes) > 0 and (time.time() - start_time) < timeout:
             nodes_to_checks = pendings_nodes.copy()  # avoid mutation while iterating
 
@@ -628,6 +603,7 @@ class ODriveManager:
                     console.print(
                         f"[green]Calibration of motor {node_id} completed[/green]"
                     )
+                    self.devices[node_id].is_calibrated = True
                     pendings_nodes.remove(node_id)
                 else:
                     console.print(
@@ -644,11 +620,7 @@ class ODriveManager:
 
         if len(errored_nodes) > 0:
             self.stop()
-        # update the calibration status
-        for node_id in node_ids:
-            if node_id not in errored_nodes:
-                self.devices[node_id].is_calibrated = True
-                
+
         return
     
     def clear_errors(self) -> None:
@@ -661,36 +633,23 @@ class ODriveManager:
                 device.clear_errors()
                 console.print(f"[blue]Cleared errors for device {node_id}[/blue]")        
                 
-    def get_calibrated_devices(self)-> List[int]:
+    def get_uncalibrate_devices(self)-> List[int]:
         # get the heartbeats of all the devices
         not_calibrated = []
         for node_id, device in self.devices.items():
             hb = device.arm()
             if hb.not_calibrated():
                 not_calibrated.append(node_id)
-                console.print(f"Device {node_id} heartbeat not calibrate: {hb}")
             else:
                 device.is_calibrated = True
-                console.print(f"Device {node_id} heartbeat calibrated: {hb}")
-        
-        return not_calibrated
-           
+            console.print(f"Device {node_id} heartbeat: {hb}")
+        return not_calibrated           
          
         
-    def set_controller_mode_all(self, control_mode: ControlMode, input_mode: InputMode):
+    def set_controller_mode(self, control_mode: ControlMode, input_mode: InputMode):
         for node_id, device in self.devices.items():
             console.print(f"Setting controller mode {control_mode.name} for device {node_id}")
             device.disarm()
             device.set_controller_mode(control_mode, input_mode) 
+            # device.arm()
             
-
-    def set_controller_mode_group(self, node_ids: List[int], control_mode: ControlMode, input_mode: InputMode):
-        for node_id in node_ids:
-            device = self.devices[node_id]
-            console.print(f"Setting controller mode {control_mode.name} for device {node_id}")
-            device.disarm()
-            device.set_controller_mode(control_mode, input_mode) 
-
-    def set_position_group(self, node_ids: List[int], positions: List[float]):
-        for node_id, pos in zip(node_ids, positions):
-            self.set_position(node_id, pos)
